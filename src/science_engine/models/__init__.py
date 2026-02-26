@@ -11,10 +11,16 @@ from science_engine.models.enums import (
     ZoneType,
 )
 from science_engine.models.recommendation import RuleRecommendation
+from science_engine.models.training_debt import (
+    DebtEntry,
+    TrainingDebtLedger,
+)
+from science_engine.models.weekly_plan import WeekContext, WeeklyPlan
 from science_engine.models.workout import WorkoutPrescription
 
 __all__ = [
     "AthleteState",
+    "DebtEntry",
     "DecisionTrace",
     "IntensityLevel",
     "Priority",
@@ -22,7 +28,10 @@ __all__ = [
     "RuleRecommendation",
     "RuleResult",
     "SessionType",
+    "TrainingDebtLedger",
     "TrainingPhase",
+    "WeekContext",
+    "WeeklyPlan",
     "WorkoutPrescription",
     "ZoneType",
 ]

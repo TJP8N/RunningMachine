@@ -1,1 +1,1 @@
-"""Drive-tier rules — future milestone."""
+"""DRIVE-tier rules — minimum training stimulus enforcement."""

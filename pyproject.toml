@@ -1,23 +1,21 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+requires = ["setuptools>=42.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-endurance-science-engine"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.7"
 dependencies = [
-    "numpy>=2.0",
-    "scipy>=1.14",
-    "pandas>=2.0",
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "pandas>=1.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4",
-    "pytest-cov>=4.1",
-    "mypy>=1.5",
-    "ruff>=0.1.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -26,16 +24,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-
-[tool.mypy]
-python_version = "3.11"
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-
-[tool.ruff]
-target-version = "py311"
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
