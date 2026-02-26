@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from science_engine.models.enums import ReadinessLevel, TrainingPhase
 
 if TYPE_CHECKING:
+    from science_engine.models.race_calendar import RaceCalendar
     from science_engine.models.training_debt import TrainingDebtLedger
 
 
@@ -64,6 +65,10 @@ class AthleteState:
     # DRIVE: training debt and marathon pace tracking
     training_debt: TrainingDebtLedger | None = None
     cumulative_mp_time_min: float = 0.0
+
+    # Race calendar (multi-race support)
+    race_calendar: RaceCalendar | None = None
+    current_date: date | None = None
 
     # Environmental
     temperature_celsius: float | None = None

@@ -5,11 +5,13 @@ from science_engine.models.decision_trace import DecisionTrace, RuleResult
 from science_engine.models.enums import (
     IntensityLevel,
     Priority,
+    RacePriority,
     ReadinessLevel,
     SessionType,
     TrainingPhase,
     ZoneType,
 )
+from science_engine.models.race_calendar import RaceCalendar, RaceEntry
 from science_engine.models.recommendation import RuleRecommendation
 from science_engine.models.training_debt import (
     DebtEntry,
@@ -24,6 +26,9 @@ __all__ = [
     "DecisionTrace",
     "IntensityLevel",
     "Priority",
+    "RaceCalendar",
+    "RaceEntry",
+    "RacePriority",
     "ReadinessLevel",
     "RuleRecommendation",
     "RuleResult",

@@ -73,6 +73,18 @@ class ReadinessLevel(IntEnum):
     VERY_SUPPRESSED = auto()
 
 
+class RacePriority(IntEnum):
+    """Race priority classification for multi-race calendars.
+
+    A = goal race (e.g. marathon), B = supporting race (e.g. half marathon),
+    C = tune-up / fun race (e.g. 8K).
+    """
+
+    A = auto()
+    B = auto()
+    C = auto()
+
+
 # ---------------------------------------------------------------------------
 # Physical constants with literature citations
 # ---------------------------------------------------------------------------
@@ -194,3 +206,47 @@ SESSION_INTENSITY_LTHR_PCT = {
     SessionType.MARATHON_PACE: 0.88,
     SessionType.RACE_SIMULATION: 0.92,
 }
+
+# ---------------------------------------------------------------------------
+# HRV readiness constants — Plews et al. (2013), Buchheit (2014)
+# ---------------------------------------------------------------------------
+HRV_SUPPRESS_THRESHOLD = 0.85   # <85% baseline → suppress intensity
+HRV_VETO_THRESHOLD = 0.70       # <70% baseline → veto to RECOVERY
+HRV_SUPPRESS_INTENSITY_MOD = 0.80
+HRV_SUPPRESS_VOLUME_MOD = 0.85
+HRV_VETO_INTENSITY_MOD = 0.50
+HRV_VETO_VOLUME_MOD = 0.60
+
+# ---------------------------------------------------------------------------
+# Sleep quality constants — Fullagar et al. (2015), Vitale et al. (2019)
+# ---------------------------------------------------------------------------
+SLEEP_SUPPRESS_THRESHOLD = 60   # <60 → reduce intensity
+SLEEP_VETO_THRESHOLD = 40       # <40 → veto to RECOVERY
+SLEEP_SUPPRESS_INTENSITY_MOD = 0.80
+SLEEP_SUPPRESS_VOLUME_MOD = 0.90
+SLEEP_VETO_INTENSITY_MOD = 0.55
+SLEEP_VETO_VOLUME_MOD = 0.65
+
+# ---------------------------------------------------------------------------
+# Body Battery (Garmin/Firstbeat) — 4-tier thresholds
+# ---------------------------------------------------------------------------
+BODY_BATTERY_VETO_THRESHOLD = 25
+BODY_BATTERY_SUPPRESS_THRESHOLD = 50
+BODY_BATTERY_MILD_THRESHOLD = 75
+BODY_BATTERY_VETO_INTENSITY_MOD = 0.50
+BODY_BATTERY_VETO_VOLUME_MOD = 0.55
+BODY_BATTERY_SUPPRESS_INTENSITY_MOD = 0.75
+BODY_BATTERY_SUPPRESS_VOLUME_MOD = 0.80
+BODY_BATTERY_MILD_INTENSITY_MOD = 0.90
+BODY_BATTERY_MILD_VOLUME_MOD = 0.95
+
+# ---------------------------------------------------------------------------
+# Race calendar constants — Mujika (2010)
+# ---------------------------------------------------------------------------
+B_RACE_TAPER_DAYS = 7
+B_RACE_RECOVERY_DAYS = 3
+C_RACE_EASY_DAY_BEFORE = 1
+B_RACE_TAPER_VOLUME_MOD = 0.70
+B_RACE_TAPER_INTENSITY_MOD = 0.85
+RACE_PROXIMITY_DAY_BEFORE = 1
+RACE_PROXIMITY_B_RACE_WINDOW = 7

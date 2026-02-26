@@ -1,7 +1,7 @@
 """End-to-end integration tests: AthleteState → ScienceEngine → WorkoutPrescription.
 
 Tests single-session prescription, weekly planning, DRIVE/SAFETY interaction,
-and training debt repayment.
+training debt repayment, recovery rules, and race calendar.
 """
 
 from datetime import date
@@ -11,10 +11,12 @@ from science_engine.models.athlete_state import AthleteState
 from science_engine.models.decision_trace import RuleStatus
 from science_engine.models.enums import (
     IntensityLevel,
+    RacePriority,
     ReadinessLevel,
     SessionType,
     TrainingPhase,
 )
+from science_engine.models.race_calendar import RaceCalendar, RaceEntry
 from science_engine.models.training_debt import DebtEntry, TrainingDebtLedger
 from science_engine.models.weekly_plan import WeeklyPlan
 from science_engine.models.workout import WorkoutPrescription
@@ -348,3 +350,175 @@ class TestWeeklyPlanIntegration:
 
         assert plan.is_recovery_week
         assert len(plan.prescriptions) == 7
+
+
+class TestRecoveryRulesIntegration:
+    """Integration tests for recovery rules firing within full engine pipeline."""
+
+    def test_recovery_rules_fire_with_hrv_data(self) -> None:
+        """When HRV/sleep/body_battery data is present, recovery rules should fire."""
+        athlete = AthleteState(
+            name="Tired Runner",
+            age=30,
+            weight_kg=70.0,
+            sex="M",
+            max_hr=190,
+            lthr_bpm=170,
+            lthr_pace_s_per_km=300,
+            vo2max=50.0,
+            current_phase=TrainingPhase.BUILD,
+            current_week=7,
+            total_plan_weeks=16,
+            day_of_week=2,
+            weekly_volume_history=(40.0, 42.0, 44.0),
+            daily_loads=tuple([50.0] * 28),
+            readiness=ReadinessLevel.NORMAL,
+            hrv_rmssd=30.0,   # 60% of baseline → veto
+            hrv_baseline=50.0,
+            sleep_score=35.0,  # below 40 → veto
+            body_battery=20,   # below 25 → veto
+        )
+        engine = ScienceEngine()
+        prescription, trace = engine.prescribe(athlete)
+
+        # At least one recovery rule should have fired
+        recovery_fired = any(
+            rr.rule_id in ("hrv_readiness", "sleep_quality", "body_battery")
+            and rr.status == RuleStatus.FIRED
+            for rr in trace.rule_results
+        )
+        assert recovery_fired
+
+    def test_safety_overrides_recovery_veto(self) -> None:
+        """SAFETY veto should still override RECOVERY recommendations."""
+        athlete = AthleteState(
+            name="Double Trouble",
+            age=30,
+            weight_kg=70.0,
+            sex="M",
+            max_hr=190,
+            lthr_bpm=170,
+            lthr_pace_s_per_km=300,
+            vo2max=50.0,
+            current_phase=TrainingPhase.BUILD,
+            current_week=7,
+            total_plan_weeks=16,
+            day_of_week=2,
+            weekly_volume_history=(40.0, 42.0, 44.0),
+            daily_loads=tuple([30.0] * 21 + [90.0] * 7),  # Spiked → SAFETY fires
+            readiness=ReadinessLevel.NORMAL,
+            hrv_rmssd=30.0,   # Also triggers RECOVERY
+            hrv_baseline=50.0,
+        )
+        engine = ScienceEngine()
+        prescription, trace = engine.prescribe(athlete)
+
+        # SAFETY should win
+        assert prescription.session_type in (
+            SessionType.EASY, SessionType.REST, SessionType.RECOVERY,
+        )
+
+    def test_graceful_when_no_recovery_data(self) -> None:
+        """Without HRV/sleep data, recovery rules should be NOT_APPLICABLE."""
+        athlete = AthleteState(
+            name="No Data",
+            age=30,
+            weight_kg=70.0,
+            sex="M",
+            max_hr=190,
+            lthr_bpm=170,
+            lthr_pace_s_per_km=300,
+            vo2max=50.0,
+            current_phase=TrainingPhase.BUILD,
+            current_week=7,
+            total_plan_weeks=16,
+            day_of_week=2,
+            weekly_volume_history=(40.0, 42.0, 44.0),
+            daily_loads=tuple([50.0] * 28),
+            readiness=ReadinessLevel.NORMAL,
+            # No hrv_rmssd, sleep_score, or body_battery
+        )
+        engine = ScienceEngine()
+        prescription, trace = engine.prescribe(athlete)
+
+        # Recovery rules should be NOT_APPLICABLE
+        recovery_results = [
+            rr for rr in trace.rule_results
+            if rr.rule_id in ("hrv_readiness", "sleep_quality", "body_battery")
+        ]
+        for rr in recovery_results:
+            assert rr.status == RuleStatus.NOT_APPLICABLE
+
+
+class TestRaceCalendarIntegration:
+    """Integration tests for race calendar backward compatibility."""
+
+    def test_backward_compat_without_calendar(self) -> None:
+        """Athletes without race_calendar should still get valid prescriptions."""
+        athlete = AthleteState(
+            name="No Calendar",
+            age=30,
+            weight_kg=70.0,
+            sex="M",
+            max_hr=190,
+            lthr_bpm=170,
+            lthr_pace_s_per_km=300,
+            vo2max=50.0,
+            current_phase=TrainingPhase.BUILD,
+            current_week=7,
+            total_plan_weeks=16,
+            day_of_week=2,
+            weekly_volume_history=(40.0, 42.0, 44.0),
+            daily_loads=tuple([50.0] * 28),
+            readiness=ReadinessLevel.NORMAL,
+        )
+        engine = ScienceEngine()
+        prescription, trace = engine.prescribe(athlete)
+
+        assert isinstance(prescription, WorkoutPrescription)
+        assert prescription.target_duration_min > 0
+
+        # race_proximity should be NOT_APPLICABLE
+        race_results = [
+            rr for rr in trace.rule_results if rr.rule_id == "race_proximity"
+        ]
+        for rr in race_results:
+            assert rr.status == RuleStatus.NOT_APPLICABLE
+
+    def test_race_day_prescription(self) -> None:
+        """On race day, race_proximity should recommend RACE_SIMULATION."""
+        cal = RaceCalendar.from_entries(
+            RaceEntry(
+                race_date=date(2026, 6, 14),
+                distance_km=21.1,
+                race_name="City Half",
+                priority=RacePriority.B,
+            ),
+        )
+        athlete = AthleteState(
+            name="Racer",
+            age=30,
+            weight_kg=70.0,
+            sex="M",
+            max_hr=190,
+            lthr_bpm=170,
+            lthr_pace_s_per_km=300,
+            vo2max=50.0,
+            current_phase=TrainingPhase.BUILD,
+            current_week=10,
+            total_plan_weeks=16,
+            day_of_week=7,
+            weekly_volume_history=(40.0, 42.0, 44.0, 46.0),
+            daily_loads=tuple([50.0] * 28),
+            readiness=ReadinessLevel.NORMAL,
+            race_calendar=cal,
+            current_date=date(2026, 6, 14),
+        )
+        engine = ScienceEngine()
+        prescription, trace = engine.prescribe(athlete)
+
+        race_prox_results = [
+            rr for rr in trace.rule_results
+            if rr.rule_id == "race_proximity" and rr.status == RuleStatus.FIRED
+        ]
+        assert len(race_prox_results) > 0

@@ -8,7 +8,8 @@ from typing import Callable
 import pytest
 
 from science_engine.models.athlete_state import AthleteState
-from science_engine.models.enums import ReadinessLevel, SessionType, TrainingPhase
+from science_engine.models.enums import RacePriority, ReadinessLevel, SessionType, TrainingPhase
+from science_engine.models.race_calendar import RaceCalendar, RaceEntry
 from science_engine.models.training_debt import DebtEntry, TrainingDebtLedger
 from science_engine.models.weekly_plan import WeekContext
 from science_engine.models.workout import WorkoutPrescription
@@ -207,3 +208,86 @@ def week_context_factory() -> Callable[..., WeekContext]:
         )
 
     return factory
+
+
+# ---------------------------------------------------------------------------
+# Milestone 3 fixtures: Race Calendar, HRV / Recovery data
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_race_calendar() -> RaceCalendar:
+    """Calendar with A-race (marathon Oct), B-race (half Jun), C-race (8K Mar)."""
+    return RaceCalendar.from_entries(
+        RaceEntry(
+            race_date=date(2026, 10, 18),
+            distance_km=42.195,
+            race_name="Chicago Marathon",
+            priority=RacePriority.A,
+        ),
+        RaceEntry(
+            race_date=date(2026, 6, 14),
+            distance_km=21.1,
+            race_name="City Half Marathon",
+            priority=RacePriority.B,
+        ),
+        RaceEntry(
+            race_date=date(2026, 3, 15),
+            distance_km=8.0,
+            race_name="Spring 8K",
+            priority=RacePriority.C,
+        ),
+    )
+
+
+@pytest.fixture
+def athlete_with_race_calendar(sample_race_calendar: RaceCalendar) -> AthleteState:
+    """Intermediate athlete with a multi-race calendar."""
+    return AthleteState(
+        name="Sarah",
+        age=35,
+        weight_kg=62.0,
+        sex="F",
+        max_hr=185,
+        lthr_bpm=168,
+        lthr_pace_s_per_km=305,
+        vo2max=48.0,
+        resting_hr=48,
+        current_phase=TrainingPhase.BUILD,
+        current_week=8,
+        total_plan_weeks=16,
+        day_of_week=2,
+        weekly_volume_history=(42.0, 44.0, 46.0, 48.0, 50.0),
+        daily_loads=tuple([55.0] * 28),
+        readiness=ReadinessLevel.NORMAL,
+        goal_race_date=date(2026, 10, 18),
+        race_calendar=sample_race_calendar,
+        current_date=date(2026, 4, 15),
+    )
+
+
+@pytest.fixture
+def athlete_with_hrv_data() -> AthleteState:
+    """Athlete with HRV, sleep, and body battery data populated."""
+    return AthleteState(
+        name="HRV Runner",
+        age=32,
+        weight_kg=68.0,
+        sex="F",
+        max_hr=188,
+        lthr_bpm=165,
+        lthr_pace_s_per_km=310,
+        vo2max=46.0,
+        resting_hr=50,
+        current_phase=TrainingPhase.BUILD,
+        current_week=6,
+        total_plan_weeks=16,
+        day_of_week=3,
+        weekly_volume_history=(40.0, 42.0, 44.0),
+        daily_loads=tuple([50.0] * 28),
+        readiness=ReadinessLevel.NORMAL,
+        hrv_rmssd=35.0,
+        hrv_baseline=50.0,
+        sleep_score=55.0,
+        body_battery=45,
+    )
