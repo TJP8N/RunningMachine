@@ -14,9 +14,11 @@ from science_engine.models.decision_trace import (
 )
 from science_engine.models.enums import IntensityLevel, SessionType, TrainingPhase
 from science_engine.models.recommendation import RuleRecommendation
+from science_engine.models.structured_workout import StructuredWorkout
 from science_engine.models.weekly_plan import WeekContext, WeeklyPlan
 from science_engine.models.workout import WorkoutPrescription
 from science_engine.registry import RuleRegistry
+from science_engine.workout_builder.builder import WorkoutBuilder
 
 
 # Default session durations in minutes by session type
@@ -120,6 +122,48 @@ class ScienceEngine:
             week_number=state.current_week,
             is_recovery_week=recovery,
         )
+
+    def prescribe_structured(
+        self, state: AthleteState,
+    ) -> tuple[StructuredWorkout, DecisionTrace]:
+        """Prescribe a fully structured workout with step-by-step targets.
+
+        Calls ``prescribe()`` to get the base prescription, then uses the
+        WorkoutBuilder to decompose it into a structured workout with
+        warmup/cooldown segments, pace/HR targets, and coaching cues.
+
+        Args:
+            state: Frozen snapshot of the athlete's current state.
+
+        Returns:
+            A tuple of (StructuredWorkout, DecisionTrace).
+        """
+        prescription, trace = self.prescribe(state)
+        builder = WorkoutBuilder()
+        structured = builder.build(prescription, state, trace)
+        return structured, trace
+
+    def prescribe_week_structured(
+        self, state: AthleteState,
+    ) -> tuple[list[StructuredWorkout], WeeklyPlan]:
+        """Plan a full 7-day week with structured workouts.
+
+        Calls ``prescribe_week()`` to get the weekly plan, then builds
+        structured workouts for each day.
+
+        Args:
+            state: Frozen athlete state snapshot.
+
+        Returns:
+            A tuple of (list of 7 StructuredWorkouts, WeeklyPlan).
+        """
+        plan = self.prescribe_week(state)
+        builder = WorkoutBuilder()
+        structured_workouts: list[StructuredWorkout] = []
+        for prescription, trace in zip(plan.prescriptions, plan.traces):
+            structured = builder.build(prescription, state, trace)
+            structured_workouts.append(structured)
+        return structured_workouts, plan
 
     def _prescribe_day(
         self,

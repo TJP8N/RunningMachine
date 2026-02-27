@@ -85,6 +85,25 @@ class RacePriority(IntEnum):
     C = auto()
 
 
+class StepType(IntEnum):
+    """Workout step types (Garmin-compatible numbering)."""
+
+    WARMUP = 1
+    COOLDOWN = 2
+    ACTIVE = 3       # Main-set steady-state (interval on Garmin)
+    RECOVERY = 4     # Recovery jog between intervals
+    REST = 5         # Full stop rest
+    REPEAT = 6       # Container for repeat blocks
+
+
+class DurationType(IntEnum):
+    """How a workout step's duration is measured."""
+
+    TIME = auto()
+    DISTANCE = auto()
+    LAP_BUTTON = auto()
+
+
 # ---------------------------------------------------------------------------
 # Physical constants with literature citations
 # ---------------------------------------------------------------------------
@@ -250,3 +269,23 @@ B_RACE_TAPER_VOLUME_MOD = 0.70
 B_RACE_TAPER_INTENSITY_MOD = 0.85
 RACE_PROXIMITY_DAY_BEFORE = 1
 RACE_PROXIMITY_B_RACE_WINDOW = 7
+
+# ---------------------------------------------------------------------------
+# Workout structure — warmup/cooldown defaults (minutes)
+# ---------------------------------------------------------------------------
+WARMUP_DURATION_MIN = 10
+COOLDOWN_DURATION_MIN = 5
+QUALITY_WARMUP_DURATION_MIN = 15   # For threshold/VO2max/tempo
+QUALITY_COOLDOWN_DURATION_MIN = 10
+
+# ---------------------------------------------------------------------------
+# Fueling — Jeukendrup (2011), Sports Med 41(6):431-446
+# ---------------------------------------------------------------------------
+FUELING_THRESHOLD_DURATION_MIN = 60   # Insert fueling steps for sessions >60 min
+FUELING_INTERVAL_MIN = 45             # Gel every ~45 min during long efforts
+
+# ---------------------------------------------------------------------------
+# Intensity level modifiers for pace/HR targets
+# ---------------------------------------------------------------------------
+INTENSITY_B_MODERATE_FACTOR = 0.95   # 5% easier
+INTENSITY_C_EASY_FACTOR = 0.85       # 15% easier

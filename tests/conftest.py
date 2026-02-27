@@ -267,6 +267,37 @@ def athlete_with_race_calendar(sample_race_calendar: RaceCalendar) -> AthleteSta
 
 
 @pytest.fixture
+def athlete_for_structured() -> AthleteState:
+    """Athlete with CS data + HRV for rich structured workout descriptions."""
+    return AthleteState(
+        name="Structured Runner",
+        age=32,
+        weight_kg=65.0,
+        sex="F",
+        max_hr=188,
+        lthr_bpm=168,
+        lthr_pace_s_per_km=305,
+        vo2max=48.0,
+        resting_hr=48,
+        current_phase=TrainingPhase.BUILD,
+        current_week=8,
+        total_plan_weeks=16,
+        day_of_week=2,
+        weekly_volume_history=(42.0, 44.0, 46.0, 48.0, 50.0),
+        daily_loads=tuple([55.0] * 28),
+        readiness=ReadinessLevel.NORMAL,
+        goal_race_date=date(2026, 6, 15),
+        critical_speed_m_per_s=4.2,
+        d_prime_meters=200.0,
+        hrv_rmssd=45.0,
+        hrv_baseline=50.0,
+        sleep_score=78.0,
+        body_battery=72,
+        acwr=1.05,
+    )
+
+
+@pytest.fixture
 def athlete_with_hrv_data() -> AthleteState:
     """Athlete with HRV, sleep, and body battery data populated."""
     return AthleteState(
