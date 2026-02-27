@@ -1,0 +1,413 @@
+"""AIEnduranceBeater — Streamlit MVP Dashboard.
+
+Run with:
+    .venv38/Scripts/streamlit run streamlit_app/app.py
+
+Requires the .venv38 environment (Python 3.8+, streamlit installed).
+"""
+
+from __future__ import annotations
+
+from datetime import date
+
+import streamlit as st
+
+from science_engine.engine import ScienceEngine
+from science_engine.models.decision_trace import RuleStatus
+from science_engine.models.enums import DurationType, SessionType, StepType
+
+from helpers import (
+    DAY_NAMES,
+    PHASE_LABELS,
+    SESSION_COLORS,
+    STEP_COLORS,
+    STEP_LABELS,
+    build_athlete_state,
+    format_duration,
+    format_hr_range,
+    format_pace_range,
+    list_profiles,
+    load_profile,
+    save_profile,
+)
+
+# ---------------------------------------------------------------------------
+# Page config
+# ---------------------------------------------------------------------------
+
+st.set_page_config(
+    page_title="AI Endurance Beater",
+    page_icon="🏃",
+    layout="wide",
+)
+
+
+# ---------------------------------------------------------------------------
+# Cached engine
+# ---------------------------------------------------------------------------
+
+
+@st.cache_resource
+def get_engine() -> ScienceEngine:
+    return ScienceEngine()
+
+
+# ---------------------------------------------------------------------------
+# Rendering helpers (must be defined before use in tabs)
+# ---------------------------------------------------------------------------
+
+
+def _render_steps(steps, indent: int = 0):
+    """Render workout steps with color-coded bars."""
+    for step in steps:
+        color = STEP_COLORS.get(step.step_type, "#CCCCCC")
+        label = STEP_LABELS.get(step.step_type, step.step_type.name)
+        prefix = "&nbsp;" * (indent * 6)
+
+        # Duration display
+        if step.step_type == StepType.REPEAT:
+            dur_text = f"{step.repeat_count}x"
+        elif step.duration_type == DurationType.DISTANCE:
+            dur_text = f"{step.duration_value:.1f} km"
+        elif step.duration_type == DurationType.TIME and step.duration_value > 0:
+            dur_text = format_duration(step.duration_value)
+        else:
+            dur_text = ""
+
+        pace_text = format_pace_range(step.pace_target_low, step.pace_target_high)
+        hr_text = format_hr_range(step.hr_target_low, step.hr_target_high)
+
+        # Build info parts
+        parts = [f"<strong>{label}</strong>"]
+        if dur_text:
+            parts.append(dur_text)
+        if pace_text != "--":
+            parts.append(pace_text)
+        if hr_text != "--":
+            parts.append(hr_text)
+
+        info_line = " | ".join(parts)
+
+        # Coaching cue
+        cue = ""
+        if step.step_notes:
+            cue = f'<br><small style="color:#666;">{step.step_notes}</small>'
+
+        st.markdown(
+            f'{prefix}<div style="background:{color};padding:6px 12px;'
+            f'border-radius:4px;margin:2px 0;display:inline-block;width:100%;">'
+            f'{info_line}{cue}</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Render child steps for REPEAT blocks
+        if step.step_type == StepType.REPEAT and step.child_steps:
+            _render_steps(step.child_steps, indent=indent + 1)
+
+
+def _render_trace(trace):
+    """Render a DecisionTrace with color-coded rule results."""
+    STATUS_ICONS = {
+        RuleStatus.FIRED: "🟢",
+        RuleStatus.SKIPPED: "🟠",
+        RuleStatus.NOT_APPLICABLE: "⚪",
+    }
+
+    for rr in trace.rule_results:
+        icon = STATUS_ICONS.get(rr.status, "⚪")
+        status_label = rr.status.name
+        st.markdown(
+            f"{icon} **{rr.rule_id}** — _{status_label}_: {rr.explanation}"
+        )
+
+    if trace.conflict_resolution_notes:
+        st.divider()
+        st.markdown(f"**Conflict Resolution:** {trace.conflict_resolution_notes}")
+
+
+def _get_pdata(key: str, default):
+    """Get value from loaded profile data, or return default."""
+    return st.session_state.get("profile_data", {}).get(key, default)
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — Athlete Profile
+# ---------------------------------------------------------------------------
+
+st.sidebar.title("Athlete Profile")
+
+# --- Demographics ---
+with st.sidebar.expander("Demographics", expanded=True):
+    name = st.text_input("Name", value=_get_pdata("name", "Runner"))
+    age = st.number_input("Age", 16, 99, int(_get_pdata("age", 35)))
+    weight_kg = st.number_input(
+        "Weight (kg)", 30.0, 200.0, float(_get_pdata("weight_kg", 70.0)), step=0.5
+    )
+    sex = st.selectbox("Sex", ["M", "F"], index=0 if _get_pdata("sex", "M") == "M" else 1)
+
+# --- Physiology ---
+with st.sidebar.expander("Physiology", expanded=True):
+    max_hr = st.number_input("Max HR", 120, 230, int(_get_pdata("max_hr", 185)))
+    lthr_bpm = st.number_input("LTHR (bpm)", 100, 220, int(_get_pdata("lthr_bpm", 165)))
+    col_lt1, col_lt2 = st.columns(2)
+    with col_lt1:
+        lthr_pace_min = st.number_input(
+            "LT pace min", 2, 12, int(_get_pdata("lthr_pace_min", 5))
+        )
+    with col_lt2:
+        lthr_pace_sec = st.number_input(
+            "LT pace sec", 0, 59, int(_get_pdata("lthr_pace_sec", 30))
+        )
+    vo2max = st.number_input(
+        "VO2max", 20.0, 90.0, float(_get_pdata("vo2max", 45.0)), step=0.5
+    )
+    resting_hr = st.number_input(
+        "Resting HR", 30, 100, int(_get_pdata("resting_hr", 50))
+    )
+
+# --- Training Plan ---
+with st.sidebar.expander("Training Plan", expanded=True):
+    total_plan_weeks = st.number_input(
+        "Total plan weeks", 4, 52, int(_get_pdata("total_plan_weeks", 16))
+    )
+    current_week = st.number_input(
+        "Current week",
+        1,
+        total_plan_weeks,
+        int(min(_get_pdata("current_week", 1), total_plan_weeks)),
+    )
+    day_of_week = st.number_input(
+        "Day of week (1=Mon, 7=Sun)",
+        1,
+        7,
+        int(_get_pdata("day_of_week", date.today().isoweekday())),
+    )
+    goal_race_date = st.date_input(
+        "Goal race date (optional)",
+        value=None,
+    )
+
+# --- Training History ---
+with st.sidebar.expander("Training History", expanded=True):
+    avg_weekly_km = st.number_input(
+        "Avg weekly km", 5.0, 250.0, float(_get_pdata("avg_weekly_km", 35.0)), step=1.0
+    )
+
+# --- Readiness (optional) ---
+with st.sidebar.expander("Readiness (optional)"):
+    hrv_rmssd = st.number_input(
+        "HRV RMSSD (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_rmssd", 0)), step=1.0
+    )
+    hrv_baseline = st.number_input(
+        "HRV Baseline (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_baseline", 0)), step=1.0
+    )
+    sleep_score = st.number_input(
+        "Sleep score 0-100 (0 = unknown)", 0.0, 100.0, float(_get_pdata("sleep_score", 0)), step=1.0
+    )
+    body_battery = st.number_input(
+        "Body Battery 0-100 (0 = unknown)", 0, 100, int(_get_pdata("body_battery", 0))
+    )
+
+# --- Advanced (optional) ---
+with st.sidebar.expander("Advanced (optional)"):
+    critical_speed = st.number_input(
+        "Critical Speed m/s (0 = unknown)",
+        0.0, 8.0, float(_get_pdata("critical_speed", 0.0)), step=0.01,
+    )
+    d_prime = st.number_input(
+        "D' meters (0 = unknown)",
+        0.0, 1000.0, float(_get_pdata("d_prime", 0.0)), step=1.0,
+    )
+    temperature = st.number_input(
+        "Temperature C (0 = unknown)",
+        0.0, 50.0, float(_get_pdata("temperature", 0.0)), step=0.5,
+    )
+
+
+def _collect_profile_from_sidebar() -> dict:
+    """Collect all sidebar widget values into a dict."""
+    return {
+        "name": name,
+        "age": age,
+        "weight_kg": weight_kg,
+        "sex": sex,
+        "max_hr": max_hr,
+        "lthr_bpm": lthr_bpm,
+        "lthr_pace_min": lthr_pace_min,
+        "lthr_pace_sec": lthr_pace_sec,
+        "vo2max": vo2max,
+        "resting_hr": resting_hr,
+        "total_plan_weeks": total_plan_weeks,
+        "current_week": current_week,
+        "day_of_week": day_of_week,
+        "goal_race_date": goal_race_date,
+        "avg_weekly_km": avg_weekly_km,
+        "hrv_rmssd": hrv_rmssd,
+        "hrv_baseline": hrv_baseline,
+        "sleep_score": sleep_score,
+        "body_battery": body_battery,
+        "critical_speed": critical_speed,
+        "d_prime": d_prime,
+        "temperature": temperature,
+    }
+
+
+# --- Profile load/save (after widget definitions so _collect works) ---
+with st.sidebar.expander("Load / Save Profile"):
+    profiles = list_profiles()
+    if profiles:
+        selected_profile = st.selectbox("Load profile", ["(none)"] + profiles)
+        if st.button("Load") and selected_profile != "(none)":
+            loaded = load_profile(selected_profile)
+            st.session_state["profile_data"] = loaded
+            st.rerun()
+    else:
+        st.caption("No saved profiles yet.")
+
+    save_name = st.text_input("Save as", value="my_profile")
+    if st.button("Save Profile"):
+        profile = _collect_profile_from_sidebar()
+        save_profile(save_name, profile)
+        st.success(f"Saved as '{save_name}'")
+
+
+# ---------------------------------------------------------------------------
+# Main content — 3 tabs
+# ---------------------------------------------------------------------------
+
+st.title("AI Endurance Beater")
+st.caption("Science-driven marathon training — powered by deterministic rules")
+
+tab_today, tab_week, tab_trace = st.tabs(
+    ["Today's Workout", "Weekly Plan", "Decision Trace"]
+)
+
+engine = get_engine()
+
+# ---------------------------------------------------------------------------
+# Tab 1: Today's Workout
+# ---------------------------------------------------------------------------
+
+with tab_today:
+    if st.button("Generate Today's Workout", type="primary"):
+        profile = _collect_profile_from_sidebar()
+        try:
+            state = build_athlete_state(profile)
+            workout, trace = engine.prescribe_structured(state)
+            st.session_state["last_workout"] = workout
+            st.session_state["last_trace"] = trace
+        except Exception as e:
+            st.error(f"Error generating workout: {e}")
+
+    workout = st.session_state.get("last_workout")
+    if workout is not None:
+        st.header(workout.workout_title)
+        st.markdown(workout.workout_description)
+
+        # Metrics row
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Duration", format_duration(workout.total_duration_min))
+        c2.metric(
+            "Distance",
+            f"{workout.total_distance_km:.1f} km"
+            if workout.total_distance_km
+            else "--",
+        )
+        c3.metric(
+            "Session Type",
+            workout.prescription.session_type.name.replace("_", " ").title(),
+        )
+
+        st.subheader("Workout Steps")
+        _render_steps(workout.steps)
+
+        if workout.decision_summary:
+            st.info(workout.decision_summary)
+    else:
+        st.info("Click **Generate Today's Workout** to get started.")
+
+# ---------------------------------------------------------------------------
+# Tab 2: Weekly Plan
+# ---------------------------------------------------------------------------
+
+with tab_week:
+    if st.button("Generate Weekly Plan", type="primary"):
+        profile = _collect_profile_from_sidebar()
+        try:
+            state = build_athlete_state(profile)
+            workouts, plan = engine.prescribe_week_structured(state)
+            st.session_state["last_week_workouts"] = workouts
+            st.session_state["last_week_plan"] = plan
+        except Exception as e:
+            st.error(f"Error generating weekly plan: {e}")
+
+    plan = st.session_state.get("last_week_plan")
+    week_workouts = st.session_state.get("last_week_workouts")
+
+    if plan is not None and week_workouts is not None:
+        # Summary metrics
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        mc1.metric("Phase", PHASE_LABELS.get(plan.phase, str(plan.phase)))
+        mc2.metric("Week", str(plan.week_number))
+        mc3.metric("Total Duration", format_duration(plan.total_duration_min))
+        mc4.metric("Key Sessions", str(plan.key_session_count))
+
+        if plan.is_recovery_week:
+            st.warning("Recovery week — reduced volume and intensity")
+
+        # 7-column day grid
+        st.subheader("Week at a Glance")
+        cols = st.columns(7)
+        for i, (col, wo) in enumerate(zip(cols, week_workouts)):
+            stype = wo.prescription.session_type
+            color = SESSION_COLORS.get(stype, "#CCCCCC")
+            label = stype.name.replace("_", " ").title()
+            with col:
+                st.markdown(
+                    f'<div style="background:{color};padding:10px;border-radius:8px;'
+                    f'text-align:center;min-height:100px;">'
+                    f"<strong>{DAY_NAMES[i]}</strong><br>"
+                    f"{label}<br>"
+                    f"<small>{format_duration(wo.total_duration_min)}</small>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+        # Expandable detail per day
+        st.subheader("Daily Details")
+        for i, wo in enumerate(week_workouts):
+            with st.expander(f"{DAY_NAMES[i]}: {wo.workout_title}"):
+                st.markdown(wo.workout_description)
+                dc1, dc2 = st.columns(2)
+                dc1.metric("Duration", format_duration(wo.total_duration_min))
+                dc2.metric(
+                    "Distance",
+                    f"{wo.total_distance_km:.1f} km"
+                    if wo.total_distance_km
+                    else "--",
+                )
+                if wo.steps:
+                    _render_steps(wo.steps)
+    else:
+        st.info("Click **Generate Weekly Plan** to plan your training week.")
+
+# ---------------------------------------------------------------------------
+# Tab 3: Decision Trace
+# ---------------------------------------------------------------------------
+
+with tab_trace:
+    trace = st.session_state.get("last_trace")
+    plan_for_trace = st.session_state.get("last_week_plan")
+
+    if trace is None and plan_for_trace is None:
+        st.info("Generate a workout or weekly plan first to see the decision trace.")
+    else:
+        if trace is not None:
+            st.subheader("Single-Day Trace")
+            _render_trace(trace)
+
+        if plan_for_trace is not None:
+            st.subheader("Weekly Trace")
+            for i, day_trace in enumerate(plan_for_trace.traces):
+                with st.expander(f"{DAY_NAMES[i]} trace"):
+                    _render_trace(day_trace)

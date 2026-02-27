@@ -1,0 +1,17 @@
+.venv/
+.venv38/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git/
+.idea/
+.vscode/
+tests/
+htmlcov/
+.coverage*
+dist/
+build/
+*.egg-info/
+streamlit_app/profiles/

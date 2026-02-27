@@ -1,0 +1,12 @@
+services:
+  ai-endurance:
+    build: .
+    container_name: ai-endurance-beater
+    ports:
+      - "8501:8501"
+    volumes:
+      - profiles:/app/streamlit_app/profiles
+    restart: unless-stopped
+
+volumes:
+  profiles:
