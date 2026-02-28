@@ -52,9 +52,15 @@ def create_session(
     token_dir.mkdir(parents=True, exist_ok=True)
     tokenstore = str(token_dir)
 
+    # Only pass tokenstore if token files actually exist inside it
+    has_tokens = (token_dir / "oauth1_token.json").exists()
+
     try:
         client = Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
-        client.login(tokenstore=tokenstore)
+        if has_tokens:
+            client.login(tokenstore=tokenstore)
+        else:
+            client.login()
         # Save tokens for future sessions
         client.garth.dump(tokenstore)
         logger.info("Logged in and saved tokens to %s", token_dir)
@@ -74,8 +80,8 @@ def resume_session(token_dir: Path | str = _DEFAULT_TOKEN_DIR) -> Garmin:
     Raises ``GarminAuthError`` if tokens are missing or expired.
     """
     token_dir = Path(token_dir)
-    if not token_dir.exists():
-        raise GarminAuthError(f"Token directory does not exist: {token_dir}")
+    if not (token_dir / "oauth1_token.json").exists():
+        raise GarminAuthError(f"No saved tokens at {token_dir}")
 
     tokenstore = str(token_dir)
     try:

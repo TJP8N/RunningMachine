@@ -17,19 +17,25 @@ def tmp_token_dir(tmp_path):
     return tmp_path / "tokens"
 
 
+def _seed_tokens(token_dir: Path) -> None:
+    """Create a fake oauth1_token.json so auth code detects existing tokens."""
+    token_dir.mkdir(parents=True, exist_ok=True)
+    (token_dir / "oauth1_token.json").write_text("{}")
+
+
 # ---------------------------------------------------------------------------
 # resume_session
 # ---------------------------------------------------------------------------
 
 
 class TestResumeSession:
-    def test_raises_when_dir_missing(self, tmp_token_dir):
-        with pytest.raises(GarminAuthError, match="does not exist"):
+    def test_raises_when_no_tokens(self, tmp_token_dir):
+        with pytest.raises(GarminAuthError, match="No saved tokens"):
             resume_session(tmp_token_dir)
 
     @patch("garmin_client.auth.Garmin")
     def test_resumes_with_tokens(self, MockGarmin, tmp_token_dir):
-        tmp_token_dir.mkdir(parents=True)
+        _seed_tokens(tmp_token_dir)
         mock_instance = MagicMock()
         MockGarmin.return_value = mock_instance
 
@@ -39,7 +45,7 @@ class TestResumeSession:
 
     @patch("garmin_client.auth.Garmin")
     def test_raises_on_load_failure(self, MockGarmin, tmp_token_dir):
-        tmp_token_dir.mkdir(parents=True)
+        _seed_tokens(tmp_token_dir)
         mock_instance = MagicMock()
         mock_instance.login.side_effect = Exception("corrupt")
         MockGarmin.return_value = mock_instance
@@ -56,12 +62,23 @@ class TestResumeSession:
 class TestCreateSession:
     @patch("garmin_client.auth.Garmin")
     def test_login_with_tokenstore(self, MockGarmin, tmp_token_dir):
+        _seed_tokens(tmp_token_dir)
         mock_instance = MagicMock()
         MockGarmin.return_value = mock_instance
 
         result = create_session("a@b.com", "pw", token_dir=tmp_token_dir)
         assert result is mock_instance
         mock_instance.login.assert_called_once_with(tokenstore=str(tmp_token_dir))
+        mock_instance.garth.dump.assert_called_once_with(str(tmp_token_dir))
+
+    @patch("garmin_client.auth.Garmin")
+    def test_login_without_tokens_skips_tokenstore(self, MockGarmin, tmp_token_dir):
+        mock_instance = MagicMock()
+        MockGarmin.return_value = mock_instance
+
+        result = create_session("a@b.com", "pw", token_dir=tmp_token_dir)
+        assert result is mock_instance
+        mock_instance.login.assert_called_once_with()  # no tokenstore arg
         mock_instance.garth.dump.assert_called_once_with(str(tmp_token_dir))
 
     @patch("garmin_client.auth.Garmin")
@@ -115,8 +132,7 @@ class TestIsAuthenticated:
 
 class TestClearTokens:
     def test_clears_existing_dir(self, tmp_token_dir):
-        tmp_token_dir.mkdir(parents=True)
-        (tmp_token_dir / "oauth1_token.json").write_text("{}")
+        _seed_tokens(tmp_token_dir)
         clear_tokens(tmp_token_dir)
         assert not tmp_token_dir.exists()
 
