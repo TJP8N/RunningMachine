@@ -44,6 +44,17 @@ class GarminClient:
             prompt_mfa=prompt_mfa,
         )
 
+    @classmethod
+    def from_garmin(cls, garmin: Garmin, token_dir: Path | str = _DEFAULT_TOKEN_DIR) -> "GarminClient":
+        """Construct from an already-authenticated Garmin object.
+
+        Used after completing MFA login via :func:`complete_mfa_login`.
+        """
+        obj = cls.__new__(cls)
+        obj._token_dir = Path(token_dir)
+        obj._garmin = garmin
+        return obj
+
     # ------------------------------------------------------------------
     # Workout operations
     # ------------------------------------------------------------------

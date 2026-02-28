@@ -1,5 +1,6 @@
 """Garmin Connect API client — all Garmin network I/O lives here."""
 
+from garmin_client.auth import complete_mfa_login
 from garmin_client.client import GarminClient
 from garmin_client.exceptions import (
     GarminAPIError,
@@ -12,6 +13,7 @@ from garmin_client.metrics_mapper import map_daily_metrics
 
 __all__ = [
     "GarminClient",
+    "complete_mfa_login",
     "GarminAPIError",
     "GarminAuthError",
     "GarminClientError",

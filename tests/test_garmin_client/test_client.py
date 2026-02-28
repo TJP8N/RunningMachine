@@ -182,3 +182,16 @@ class TestWorkoutOps:
     def test_delete_workout(self, client, mock_garmin):
         client.delete_workout(123)
         mock_garmin.delete_workout.assert_called_once_with(123)
+
+
+# ---------------------------------------------------------------------------
+# from_garmin classmethod
+# ---------------------------------------------------------------------------
+
+
+class TestFromGarmin:
+    def test_creates_client_from_authenticated_garmin(self, mock_garmin):
+        gc = GarminClient.from_garmin(mock_garmin, "/tmp/tokens")
+        assert gc._garmin is mock_garmin
+        from pathlib import Path
+        assert gc._token_dir == Path("/tmp/tokens")

@@ -37,7 +37,13 @@ from helpers import (
 
 # Conditional Garmin imports — only available when garminconnect is installed
 try:
-    from garmin_client import GarminClient, GarminAuthError, map_daily_metrics
+    from garmin_client import (
+        GarminClient,
+        GarminAuthError,
+        GarminMFARequired,
+        complete_mfa_login,
+        map_daily_metrics,
+    )
 
     _GARMIN_AVAILABLE = True
 except ImportError:
@@ -310,6 +316,37 @@ with st.sidebar.expander("Garmin Connect"):
                         st.caption(f"{k}: {v}")
             except Exception as e:
                 st.error(f"Failed to pull metrics: {e}")
+    elif st.session_state.get("garmin_mfa_pending"):
+        # MFA step: initial login detected MFA, now need the verification code
+        st.info("Garmin sent a verification code to your email. Enter it below.")
+        mfa_code = st.text_input("MFA Code", key="garmin_mfa_code")
+        if st.button("Verify"):
+            if not mfa_code:
+                st.warning("Enter the code from your email")
+            else:
+                try:
+                    mfa_client = st.session_state.get("garmin_mfa_client")
+                    mfa_state = st.session_state.get("garmin_mfa_state")
+                    mfa_token_dir = st.session_state.get("garmin_mfa_token_dir")
+
+                    authed = complete_mfa_login(
+                        mfa_client, mfa_state, mfa_code, mfa_token_dir
+                    )
+                    gc = GarminClient.from_garmin(authed, mfa_token_dir)
+
+                    st.session_state["garmin_client"] = gc
+                    for k in ("garmin_mfa_pending", "garmin_mfa_client",
+                              "garmin_mfa_state", "garmin_mfa_token_dir"):
+                        st.session_state.pop(k, None)
+                    st.success("Connected!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"MFA verification failed: {e}")
+        if st.button("Cancel"):
+            for k in ("garmin_mfa_pending", "garmin_mfa_client",
+                      "garmin_mfa_state", "garmin_mfa_token_dir"):
+                st.session_state.pop(k, None)
+            st.rerun()
     else:
         st.caption(
             "Connect your Garmin account to pull real metrics "
@@ -329,6 +366,13 @@ with st.sidebar.expander("Garmin Connect"):
                     )
                     st.session_state["garmin_client"] = gc
                     st.success("Connected!")
+                    st.rerun()
+                except GarminMFARequired as mfa_exc:
+                    # Stash partially-authed client and MFA state
+                    st.session_state["garmin_mfa_pending"] = True
+                    st.session_state["garmin_mfa_client"] = getattr(mfa_exc, "garmin_client", None)
+                    st.session_state["garmin_mfa_state"] = getattr(mfa_exc, "mfa_state", None)
+                    st.session_state["garmin_mfa_token_dir"] = getattr(mfa_exc, "token_dir", None)
                     st.rerun()
                 except GarminAuthError as e:
                     st.error(f"Auth failed: {e}")
