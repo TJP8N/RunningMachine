@@ -213,6 +213,15 @@ class GarminClient:
             logger.warning("Failed to pull recent_activities")
             result["recent_activities"] = None
 
+        # All recent activities (any type) — used for observed max HR
+        try:
+            result["all_activities"] = self._safe_call(
+                self._garmin.get_activities, 0, 100
+            )
+        except Exception:
+            logger.warning("Failed to pull all_activities")
+            result["all_activities"] = None
+
         return result
 
     # ------------------------------------------------------------------

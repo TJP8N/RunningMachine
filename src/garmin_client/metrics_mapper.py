@@ -85,41 +85,58 @@ def _extract_sleep_score(data: Any) -> Optional[float]:
 
 
 def _extract_body_battery(data: Any) -> Optional[int]:
-    """Extract morning body battery peak from the charged body battery list.
+    """Extract highest body battery level from Garmin body battery data.
 
-    The Garmin API returns a list of body battery readings. We take the
-    highest "charged" value from the morning window (first reading or max).
+    The API returns either:
+    - A list of day-summary dicts, each containing bodyBatteryValuesArray
+      with [timestamp, level] pairs
+    - A dict with bodyBatteryValuesArray directly
+    - A list of [timestamp, level] pairs
+    - A list of dicts with 'charged' keys
+
+    We extract the highest battery LEVEL (not charged amount).
     """
     if not data:
         return None
 
-    # data may be a list of dicts with 'charged' values,
-    # or a dict with a body battery list
-    bb_list = data
+    # Collect all [timestamp, level] arrays from the data
+    level_arrays: list[list] = []
+
     if isinstance(data, dict):
-        bb_list = data.get("bodyBatteryValuesArray") or data.get("bodyBattery") or []
+        arr = data.get("bodyBatteryValuesArray") or data.get("bodyBattery") or []
+        if isinstance(arr, list):
+            level_arrays.append(arr)
+    elif isinstance(data, list):
+        for entry in data:
+            if isinstance(entry, dict) and "bodyBatteryValuesArray" in entry:
+                arr = entry["bodyBatteryValuesArray"]
+                if isinstance(arr, list):
+                    level_arrays.append(arr)
+            elif isinstance(entry, (list, tuple)):
+                # Might be [timestamp, level] directly
+                level_arrays.append(data)
+                break
+            elif isinstance(entry, dict) and "charged" in entry:
+                # Fallback: older format with just 'charged' per entry
+                level_arrays.append(data)
+                break
 
-    if not isinstance(bb_list, list) or len(bb_list) == 0:
-        return None
-
-    # Each entry may be [timestamp, level, charged, drained, status]
-    # or a dict with 'charged' key
     max_val: Optional[int] = None
-    for entry in bb_list:
-        charged = None
-        if isinstance(entry, dict):
-            charged = entry.get("charged")
-        elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
-            # [timestamp, level] — take level as the battery value
-            charged = entry[1]
+    for arr in level_arrays:
+        for item in arr:
+            level = None
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                level = item[1]  # [timestamp, level]
+            elif isinstance(item, dict):
+                level = item.get("charged")
 
-        if charged is not None:
-            try:
-                val = int(charged)
-                if max_val is None or val > max_val:
-                    max_val = val
-            except (ValueError, TypeError):
-                continue
+            if level is not None:
+                try:
+                    val = int(level)
+                    if max_val is None or val > max_val:
+                        max_val = val
+                except (ValueError, TypeError):
+                    continue
 
     return max_val
 
@@ -165,6 +182,29 @@ def _extract_resting_hr(data: Any) -> Optional[int]:
         except (ValueError, TypeError):
             return None
     return None
+
+
+def _extract_max_hr_from_activities(activities: list) -> Optional[int]:
+    """Find the highest maxHR across a list of Garmin activity summaries.
+
+    Each activity dict may contain 'maxHR' (the peak HR during that session).
+    We return the overall maximum as a floor for physiological max HR.
+    """
+    max_hr: Optional[int] = None
+    for act in activities:
+        if not isinstance(act, dict):
+            continue
+        hr = act.get("maxHR")
+        if hr is not None:
+            try:
+                val = int(hr)
+                # Sanity: must be in physiological range
+                if 120 <= val <= 230:
+                    if max_hr is None or val > max_hr:
+                        max_hr = val
+            except (ValueError, TypeError):
+                continue
+    return max_hr
 
 
 def _extract_readiness(data: Any) -> Optional[ReadinessLevel]:
@@ -237,42 +277,27 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     """
     result: dict[str, Any] = {}
 
-    # --- User profile: name, age, sex ---
-    profile = raw.get("user_profile")
-    if isinstance(profile, dict):
-        # Prefer real name over displayName (which is often a username)
-        first = profile.get("firstName") or ""
-        last = profile.get("lastName") or ""
-        full_name = f"{first} {last}".strip()
-        if not full_name:
-            full_name = profile.get("displayName") or profile.get("userName") or ""
-        if full_name:
-            result["name"] = str(full_name)
+    # --- User settings: PRIMARY source for demographics + biometrics ---
+    # get_userprofile_settings() returns {id, userData: {gender, weight,
+    # birthDate, lactateThresholdHeartRate, lactateThresholdSpeed, ...}, ...}
+    lt_hr_from_settings: Any = None
+    lt_speed_from_settings: Any = None
 
-        # Age from birth date
-        birth = profile.get("birthDate")
-        if birth:
-            age = _birth_date_to_age(birth)
-            if age:
-                result["age"] = age
-
-        # Sex / gender
-        gender = profile.get("gender")
-        if gender:
-            result["sex"] = "F" if str(gender).upper() in ("FEMALE", "F") else "M"
-
-    # Also check user_settings for demographics
     settings = raw.get("user_settings")
     if isinstance(settings, dict):
         user_data = settings.get("userData") or settings
 
-        # Age from settings if not found in profile
-        if "age" not in result:
-            birth = user_data.get("birthDate")
-            if birth:
-                age = _birth_date_to_age(birth)
-                if age:
-                    result["age"] = age
+        # Sex / gender
+        gender = user_data.get("gender")
+        if gender:
+            result["sex"] = "F" if str(gender).upper() in ("FEMALE", "F") else "M"
+
+        # Age from birth date
+        birth = user_data.get("birthDate")
+        if birth:
+            age = _birth_date_to_age(birth)
+            if age:
+                result["age"] = age
 
         # Weight — Garmin stores in grams; detect by magnitude
         weight_raw = user_data.get("weight")
@@ -284,10 +309,37 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, TypeError):
                 pass
 
+        # Stash LT values from settings as fallback
+        lt_hr_from_settings = user_data.get("lactateThresholdHeartRate")
+        lt_speed_from_settings = user_data.get("lactateThresholdSpeed")
+
+    # --- User profile: name only if real first/last name available ---
+    # get_user_profile() returns {displayName, preferredLocale, ...}
+    # displayName is a USERNAME (e.g. "tjpaton8"), not a real name.
+    profile = raw.get("user_profile")
+    if isinstance(profile, dict):
+        first = profile.get("firstName") or ""
+        last = profile.get("lastName") or ""
+        full_name = f"{first} {last}".strip()
+        # Only set name if we found a real first/last name
+        if full_name:
+            result["name"] = str(full_name)
+
+        # Fallback demographics from profile (unlikely, but just in case)
+        if "age" not in result:
+            birth = profile.get("birthDate")
+            if birth:
+                age = _birth_date_to_age(birth)
+                if age:
+                    result["age"] = age
+        if "sex" not in result:
+            gender = profile.get("gender")
+            if gender:
+                result["sex"] = "F" if str(gender).upper() in ("FEMALE", "F") else "M"
+
     # --- Body composition: weight fallback ---
     body_comp = raw.get("body_composition")
     if isinstance(body_comp, dict) and "weight_kg" not in result:
-        # Try several common paths
         weight_raw = (
             body_comp.get("weight")
             or _deep_get(body_comp, "totalAverage", "weight")
@@ -304,14 +356,29 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     if vo2 is not None:
         result["vo2max"] = vo2
 
+    # --- Max HR ---
+    # Strategy 1: observed max from all recent activities
+    all_acts = raw.get("all_activities")
+    if isinstance(all_acts, list) and len(all_acts) > 0:
+        observed_max = _extract_max_hr_from_activities(all_acts)
+        if observed_max is not None:
+            result["max_hr"] = observed_max
+
+    # Strategy 2: estimate from LTHR (~88% of max HR)
+    if "max_hr" not in result and "lthr_bpm" in result:
+        result["max_hr"] = int(round(result["lthr_bpm"] / 0.88))
+
+    # Strategy 3: Tanaka formula from age (least reliable)
+    if "max_hr" not in result and "age" in result:
+        result["max_hr"] = int(round(208 - 0.7 * result["age"]))
+
     # --- Resting HR ---
+    # get_rhr_day() → {allMetrics: {metricsMap: {WELLNESS_RESTING_HEART_RATE: [{value}]}}}
     rhr_data = raw.get("resting_hr")
     if isinstance(rhr_data, dict):
-        # Try multiple common field paths
         for path in [
-            ("restingHeartRate",),
-            ("rhr",),
             ("allMetrics", "metricsMap", "WELLNESS_RESTING_HEART_RATE", 0, "value"),
+            ("restingHeartRate",),
         ]:
             val = _deep_get(rhr_data, *path)
             if val is not None:
@@ -320,69 +387,67 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
                     break
                 except (ValueError, TypeError):
                     pass
-    # Fallback from stats
-    if "resting_hr" not in result:
-        rhr_from_stats = _extract_resting_hr(raw.get("stats"))
-        if rhr_from_stats is not None:
-            result["resting_hr"] = rhr_from_stats
 
-    # Note: stats.maxHeartRate is the highest HR recorded TODAY (not
-    # physiological max HR), so we don't use it for the max_hr profile field.
+    # Fallback: stats.restingHeartRate
+    if "resting_hr" not in result:
+        stats = raw.get("stats")
+        if isinstance(stats, dict):
+            # Prefer 7-day average (more stable) over today's value
+            for key in ("lastSevenDaysAvgRestingHeartRate", "restingHeartRate"):
+                rhr_val = stats.get(key)
+                if rhr_val is not None:
+                    try:
+                        result["resting_hr"] = int(rhr_val)
+                        break
+                    except (ValueError, TypeError):
+                        pass
 
     # --- Lactate threshold: LTHR bpm + pace ---
+    # get_lactate_threshold() → {speed_and_heart_rate: {heartRate, speed}, power: {...}}
     lt = raw.get("lactate_threshold")
     if isinstance(lt, dict):
-        # Try direct fields and nested allMetrics paths
-        lt_hr = (
-            lt.get("heartRateThreshold")
-            or _deep_get(lt, "allMetrics", "metricsMap", "HEART_RATE", 0, "value")
-        )
-        if lt_hr is not None:
-            try:
-                result["lthr_bpm"] = int(lt_hr)
-            except (ValueError, TypeError):
-                pass
+        shr = lt.get("speed_and_heart_rate")
+        if isinstance(shr, dict):
+            lt_hr = shr.get("heartRate")
+            if lt_hr is not None:
+                try:
+                    result["lthr_bpm"] = int(lt_hr)
+                except (ValueError, TypeError):
+                    pass
+            lt_speed = shr.get("speed")
+            if lt_speed is not None:
+                _set_lt_pace(result, lt_speed)
 
-        # Speed: could be m/s directly, or in a nested metrics map
-        lt_speed = (
-            lt.get("runningLactateThresholdSpeed")
-            or _deep_get(lt, "allMetrics", "metricsMap", "SPEED", 0, "value")
-        )
-        if lt_speed is not None:
-            try:
-                speed = float(lt_speed)
-                # Garmin returns speed in m/s; if value is very large (>100)
-                # it might be in mm/s or cm/s
-                if speed > 100:
-                    speed = speed / 1000.0  # mm/s → m/s
-                elif speed > 20:
-                    speed = speed / 100.0  # cm/s → m/s
-                # Now speed is in m/s
-                if speed > 0:
-                    pace_s_per_km = 1000.0 / speed
-                    result["lthr_pace_min"] = int(pace_s_per_km // 60)
-                    result["lthr_pace_sec"] = int(pace_s_per_km % 60)
-            except (ValueError, TypeError, ZeroDivisionError):
-                pass
+    # Fallback: LT from user_settings.userData
+    if "lthr_bpm" not in result and lt_hr_from_settings is not None:
+        try:
+            result["lthr_bpm"] = int(lt_hr_from_settings)
+        except (ValueError, TypeError):
+            pass
+    if "lthr_pace_min" not in result and lt_speed_from_settings is not None:
+        _set_lt_pace(result, lt_speed_from_settings)
 
     # --- Recent activities: avg weekly km ---
     activities = raw.get("recent_activities")
-    if isinstance(activities, list) and len(activities) > 0:
-        total_km = 0.0
-        num_weeks = 6.0  # 6-week window
-        for act in activities:
-            if not isinstance(act, dict):
-                continue
-            dist = act.get("distance")
-            if dist is not None:
-                try:
-                    d = float(dist)
-                    # Garmin returns meters; if suspiciously small, might be km
-                    total_km += d / 1000.0 if d > 500 else d
-                except (ValueError, TypeError):
-                    pass
-        if total_km > 0:
-            result["avg_weekly_km"] = round(total_km / num_weeks, 1)
+    if isinstance(activities, list):
+        if len(activities) > 0:
+            total_km = 0.0
+            num_weeks = 6.0  # 6-week window
+            for act in activities:
+                if not isinstance(act, dict):
+                    continue
+                dist = act.get("distance")
+                if dist is not None:
+                    try:
+                        d = float(dist)
+                        # Garmin returns meters; if suspiciously small, might be km
+                        total_km += d / 1000.0 if d > 500 else d
+                    except (ValueError, TypeError):
+                        pass
+            result["avg_weekly_km"] = round(total_km / num_weeks, 1) if total_km > 0 else 0.0
+        else:
+            # Empty activity list — no recent running
+            result["avg_weekly_km"] = 0.0
 
     # --- Readiness metrics (daily) ---
     rmssd, baseline = _extract_hrv(raw.get("hrv"))
@@ -409,7 +474,7 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
         "lthr_pace_min": (2, 12),
         "lthr_pace_sec": (0, 59),
         "vo2max": (20.0, 90.0),
-        "avg_weekly_km": (5.0, 250.0),
+        "avg_weekly_km": (0.0, 250.0),
         "hrv_rmssd": (0.0, 200.0),
         "hrv_baseline": (0.0, 200.0),
         "sleep_score": (0.0, 100.0),
@@ -425,6 +490,29 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
                 del result[key]
 
     return result
+
+
+def _set_lt_pace(result: dict[str, Any], speed_raw: Any) -> None:
+    """Convert LT speed to pace and store lthr_pace_min/sec in result."""
+    try:
+        speed = float(speed_raw)
+        if speed <= 0:
+            return
+        # Normal running LT speed is 2.5-6.0 m/s.
+        # Garmin sometimes stores values scaled down by 10x (e.g. 0.394
+        # instead of 3.94 m/s). Correct if clearly too slow for running.
+        if speed < 1.0:
+            speed = speed * 10.0
+        elif speed > 100:
+            speed = speed / 1000.0  # mm/s → m/s
+        elif speed > 20:
+            speed = speed / 100.0  # cm/s → m/s
+        if speed > 0:
+            pace_s_per_km = 1000.0 / speed
+            result["lthr_pace_min"] = int(pace_s_per_km // 60)
+            result["lthr_pace_sec"] = int(pace_s_per_km % 60)
+    except (ValueError, TypeError, ZeroDivisionError):
+        pass
 
 
 def _birth_date_to_age(birth_date: Any) -> Optional[int]:

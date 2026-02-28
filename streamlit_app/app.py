@@ -144,6 +144,64 @@ def _render_trace(trace):
         st.markdown(f"**Conflict Resolution:** {trace.conflict_resolution_notes}")
 
 
+# ---------------------------------------------------------------------------
+# Widget key mapping — explicit keys let us programmatically update values
+# ---------------------------------------------------------------------------
+
+_FIELD_TO_WIDGET_KEY: dict[str, str] = {
+    "name": "w_name",
+    "age": "w_age",
+    "weight_kg": "w_weight_kg",
+    "sex": "w_sex",
+    "max_hr": "w_max_hr",
+    "lthr_bpm": "w_lthr_bpm",
+    "lthr_pace_min": "w_lthr_pace_min",
+    "lthr_pace_sec": "w_lthr_pace_sec",
+    "vo2max": "w_vo2max",
+    "resting_hr": "w_resting_hr",
+    "total_plan_weeks": "w_total_plan_weeks",
+    "current_week": "w_current_week",
+    "day_of_week": "w_day_of_week",
+    "avg_weekly_km": "w_avg_weekly_km",
+    "hrv_rmssd": "w_hrv_rmssd",
+    "hrv_baseline": "w_hrv_baseline",
+    "sleep_score": "w_sleep_score",
+    "body_battery": "w_body_battery",
+    "critical_speed": "w_critical_speed",
+    "d_prime": "w_d_prime",
+    "temperature": "w_temperature",
+}
+
+# Type-safe converters for each widget field
+_FIELD_TYPES: dict[str, type] = {
+    "name": str,
+    "age": int, "weight_kg": float, "sex": str,
+    "max_hr": int, "lthr_bpm": int, "lthr_pace_min": int, "lthr_pace_sec": int,
+    "vo2max": float, "resting_hr": int,
+    "total_plan_weeks": int, "current_week": int, "day_of_week": int,
+    "avg_weekly_km": float,
+    "hrv_rmssd": float, "hrv_baseline": float, "sleep_score": float,
+    "body_battery": int,
+    "critical_speed": float, "d_prime": float, "temperature": float,
+}
+
+
+def _push_to_widgets(values: dict) -> None:
+    """Push mapped values directly into widget session_state keys.
+
+    This ensures widgets update on the next rerun, overriding their
+    cached internal state.
+    """
+    for field, val in values.items():
+        wkey = _FIELD_TO_WIDGET_KEY.get(field)
+        if wkey is not None and val is not None:
+            converter = _FIELD_TYPES.get(field, type(val))
+            try:
+                st.session_state[wkey] = converter(val)
+            except (ValueError, TypeError):
+                pass
+
+
 def _pull_garmin_profile(gc: "GarminClient") -> None:
     """Pull Garmin profile and merge into profile_data for sidebar pre-fill."""
     if not _GARMIN_AVAILABLE:
@@ -154,10 +212,11 @@ def _pull_garmin_profile(gc: "GarminClient") -> None:
         mapped = map_profile(raw)
         if mapped:
             existing = st.session_state.get("profile_data", {})
-            # Garmin values override defaults/previous values
             merged = {**existing, **mapped}
             st.session_state["profile_data"] = merged
             st.session_state["garmin_profile_fields"] = set(mapped.keys())
+            # Push directly to widget state so values appear after rerun
+            _push_to_widgets(mapped)
         # Also extract daily metrics from the same pull
         daily = map_daily_metrics(raw)
         if any(v is not None for v in daily.values()):
@@ -177,51 +236,82 @@ def _get_pdata(key: str, default):
 
 st.sidebar.title("Athlete Profile")
 
+# --- Initialize widget defaults (first render only) ---
+_WIDGET_DEFAULTS: dict[str, tuple[str, object]] = {
+    "w_name": ("name", "Runner"),
+    "w_age": ("age", 35),
+    "w_weight_kg": ("weight_kg", 70.0),
+    "w_sex": ("sex", "M"),
+    "w_max_hr": ("max_hr", 185),
+    "w_lthr_bpm": ("lthr_bpm", 165),
+    "w_lthr_pace_min": ("lthr_pace_min", 5),
+    "w_lthr_pace_sec": ("lthr_pace_sec", 30),
+    "w_vo2max": ("vo2max", 45.0),
+    "w_resting_hr": ("resting_hr", 50),
+    "w_total_plan_weeks": ("total_plan_weeks", 16),
+    "w_current_week": ("current_week", 1),
+    "w_day_of_week": ("day_of_week", date.today().isoweekday()),
+    "w_avg_weekly_km": ("avg_weekly_km", 35.0),
+    "w_hrv_rmssd": ("hrv_rmssd", 0.0),
+    "w_hrv_baseline": ("hrv_baseline", 0.0),
+    "w_sleep_score": ("sleep_score", 0.0),
+    "w_body_battery": ("body_battery", 0),
+    "w_critical_speed": ("critical_speed", 0.0),
+    "w_d_prime": ("d_prime", 0.0),
+    "w_temperature": ("temperature", 0.0),
+}
+for _wk, (_field, _default) in _WIDGET_DEFAULTS.items():
+    if _wk not in st.session_state:
+        st.session_state[_wk] = type(_default)(_get_pdata(_field, _default))
+
 # --- Demographics ---
 with st.sidebar.expander("Demographics", expanded=True):
-    name = st.text_input("Name", value=_get_pdata("name", "Runner"))
-    age = st.number_input("Age", 16, 99, int(_get_pdata("age", 35)))
+    name = st.text_input("Name", key="w_name")
+    age = st.number_input("Age", 16, 99, key="w_age")
     weight_kg = st.number_input(
-        "Weight (kg)", 30.0, 200.0, float(_get_pdata("weight_kg", 70.0)), step=0.5
+        "Weight (kg)", 30.0, 200.0, step=0.5, key="w_weight_kg"
     )
-    sex = st.selectbox("Sex", ["M", "F"], index=0 if _get_pdata("sex", "M") == "M" else 1)
+    sex = st.selectbox("Sex", ["M", "F"], key="w_sex")
 
 # --- Physiology ---
 with st.sidebar.expander("Physiology", expanded=True):
-    max_hr = st.number_input("Max HR", 120, 230, int(_get_pdata("max_hr", 185)))
-    lthr_bpm = st.number_input("LTHR (bpm)", 100, 220, int(_get_pdata("lthr_bpm", 165)))
+    max_hr = st.number_input("Max HR", 120, 230, key="w_max_hr")
+    lthr_bpm = st.number_input("LTHR (bpm)", 100, 220, key="w_lthr_bpm")
     col_lt1, col_lt2 = st.columns(2)
     with col_lt1:
         lthr_pace_min = st.number_input(
-            "LT pace min", 2, 12, int(_get_pdata("lthr_pace_min", 5))
+            "LT pace min", 2, 12, key="w_lthr_pace_min"
         )
     with col_lt2:
         lthr_pace_sec = st.number_input(
-            "LT pace sec", 0, 59, int(_get_pdata("lthr_pace_sec", 30))
+            "LT pace sec", 0, 59, key="w_lthr_pace_sec"
         )
     vo2max = st.number_input(
-        "VO2max", 20.0, 90.0, float(_get_pdata("vo2max", 45.0)), step=0.5
+        "VO2max", 20.0, 90.0, step=0.5, key="w_vo2max"
     )
     resting_hr = st.number_input(
-        "Resting HR", 30, 100, int(_get_pdata("resting_hr", 50))
+        "Resting HR", 30, 100, key="w_resting_hr"
     )
 
 # --- Training Plan ---
 with st.sidebar.expander("Training Plan", expanded=True):
     total_plan_weeks = st.number_input(
-        "Total plan weeks", 4, 52, int(_get_pdata("total_plan_weeks", 16))
+        "Total plan weeks", 4, 52, key="w_total_plan_weeks"
     )
+    # Clamp current_week to total_plan_weeks
+    if st.session_state.get("w_current_week", 1) > total_plan_weeks:
+        st.session_state["w_current_week"] = total_plan_weeks
     current_week = st.number_input(
         "Current week",
         1,
         total_plan_weeks,
-        int(min(_get_pdata("current_week", 1), total_plan_weeks)),
+        key="w_current_week",
     )
     day_of_week = st.number_input(
         "Day of week (1=Mon, 7=Sun)",
         1,
         7,
-        int(_get_pdata("day_of_week", date.today().isoweekday())),
+        key="w_day_of_week",
     )
     goal_race_date = st.date_input(
         "Goal race date (optional)",
@@ -231,37 +321,37 @@ with st.sidebar.expander("Training Plan", expanded=True):
 # --- Training History ---
 with st.sidebar.expander("Training History", expanded=True):
     avg_weekly_km = st.number_input(
-        "Avg weekly km", 5.0, 250.0, float(_get_pdata("avg_weekly_km", 35.0)), step=1.0
+        "Avg weekly km", 0.0, 250.0, step=1.0, key="w_avg_weekly_km"
     )
 
 # --- Readiness (optional) ---
 with st.sidebar.expander("Readiness (optional)"):
     hrv_rmssd = st.number_input(
-        "HRV RMSSD (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_rmssd", 0)), step=1.0
+        "HRV RMSSD (0 = unknown)", 0.0, 200.0, step=1.0, key="w_hrv_rmssd"
     )
     hrv_baseline = st.number_input(
-        "HRV Baseline (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_baseline", 0)), step=1.0
+        "HRV Baseline (0 = unknown)", 0.0, 200.0, step=1.0, key="w_hrv_baseline"
     )
     sleep_score = st.number_input(
-        "Sleep score 0-100 (0 = unknown)", 0.0, 100.0, float(_get_pdata("sleep_score", 0)), step=1.0
+        "Sleep score 0-100 (0 = unknown)", 0.0, 100.0, step=1.0, key="w_sleep_score"
     )
     body_battery = st.number_input(
-        "Body Battery 0-100 (0 = unknown)", 0, 100, int(_get_pdata("body_battery", 0))
+        "Body Battery 0-100 (0 = unknown)", 0, 100, key="w_body_battery"
     )
 
 # --- Advanced (optional) ---
 with st.sidebar.expander("Advanced (optional)"):
     critical_speed = st.number_input(
         "Critical Speed m/s (0 = unknown)",
-        0.0, 8.0, float(_get_pdata("critical_speed", 0.0)), step=0.01,
+        0.0, 8.0, step=0.01, key="w_critical_speed",
     )
     d_prime = st.number_input(
         "D' meters (0 = unknown)",
-        0.0, 1000.0, float(_get_pdata("d_prime", 0.0)), step=1.0,
+        0.0, 1000.0, step=1.0, key="w_d_prime",
     )
     temperature = st.number_input(
         "Temperature C (0 = unknown)",
-        0.0, 50.0, float(_get_pdata("temperature", 0.0)), step=0.5,
+        0.0, 50.0, step=0.5, key="w_temperature",
     )
 
 
@@ -301,6 +391,7 @@ with st.sidebar.expander("Load / Save Profile"):
         if st.button("Load") and selected_profile != "(none)":
             loaded = load_profile(selected_profile)
             st.session_state["profile_data"] = loaded
+            _push_to_widgets(loaded)
             st.rerun()
     else:
         st.caption("No saved profiles yet.")
