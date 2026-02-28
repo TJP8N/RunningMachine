@@ -10,7 +10,7 @@ class TestRuleRegistry:
     def test_discover_finds_rules(self) -> None:
         registry = RuleRegistry()
         registry.discover_rules()
-        assert len(registry.get_all_rules()) >= 12
+        assert len(registry.get_all_rules()) >= 11
 
     def test_discovers_safety_rule(self) -> None:
         registry = RuleRegistry()
@@ -21,7 +21,6 @@ class TestRuleRegistry:
         registry = RuleRegistry()
         registry.discover_rules()
         rule_ids = registry.rule_ids
-        assert "periodization" in rule_ids
         assert "progressive_overload" in rule_ids
         assert "workout_type_selector" in rule_ids
         assert "race_proximity" in rule_ids

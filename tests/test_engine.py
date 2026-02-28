@@ -25,7 +25,6 @@ class TestScienceEngine:
         # At least the 4 implemented rules should appear
         rule_ids = [r.rule_id for r in trace.rule_results]
         assert "injury_risk_acwr" in rule_ids
-        assert "periodization" in rule_ids
         assert "progressive_overload" in rule_ids
         assert "workout_type_selector" in rule_ids
 

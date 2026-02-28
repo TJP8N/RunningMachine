@@ -80,7 +80,6 @@ class TestEndToEndIntegration:
         # All rules were evaluated
         rule_ids = {r.rule_id for r in trace.rule_results}
         assert "injury_risk_acwr" in rule_ids
-        assert "periodization" in rule_ids
         assert "progressive_overload" in rule_ids
         assert "workout_type_selector" in rule_ids
 
@@ -176,7 +175,7 @@ class TestWeeklyPlanIntegration:
             vo2max=48.0,
             resting_hr=48,
             current_phase=TrainingPhase.BUILD,
-            current_week=8,
+            current_week=7,  # Non-recovery BUILD week
             total_plan_weeks=16,
             day_of_week=1,
             weekly_volume_history=(42.0, 44.0, 46.0, 48.0, 50.0),

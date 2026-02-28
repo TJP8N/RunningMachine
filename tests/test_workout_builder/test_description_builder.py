@@ -102,17 +102,17 @@ class TestBuildWorkoutDescription:
     def test_description_includes_firing_rules(self) -> None:
         rx = _make_prescription()
         state = _make_state()
-        trace = _make_trace("periodization", "progressive_overload")
+        trace = _make_trace("workout_type_selector", "progressive_overload")
         _, desc = build_workout_description(rx, state, trace)
-        assert "periodization" in desc
+        assert "workout_type_selector" in desc
         assert "progressive_overload" in desc
 
 
 class TestBuildDecisionSummary:
     def test_summary_with_fired_rules(self) -> None:
-        trace = _make_trace("periodization", "progressive_overload", "injury_risk_acwr")
+        trace = _make_trace("workout_type_selector", "progressive_overload", "injury_risk_acwr")
         summary = build_decision_summary(trace)
-        assert "periodization" in summary
+        assert "workout_type_selector" in summary
         assert "progressive_overload" in summary
         # Only top 2 rules, separated by |
         assert summary.count("|") == 1

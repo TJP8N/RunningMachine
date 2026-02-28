@@ -73,7 +73,7 @@ class WorkoutTypeSelectorRule(ScienceRule):
                 f"{' (recovery week — downgraded)' if recovery else ''}. "
                 f"Ref: Pfitzinger & Douglas (2009)."
             ),
-            confidence=0.75,
+            confidence=0.85,
         )
 
     def _select_session(
@@ -83,7 +83,7 @@ class WorkoutTypeSelectorRule(ScienceRule):
         quality_1, quality_2 = _QUALITY_SESSIONS[phase]
 
         if day_role == "rest_or_easy":
-            return SessionType.REST if not recovery else SessionType.REST
+            return SessionType.EASY if recovery else SessionType.REST
 
         if day_role == "quality_1":
             return SessionType.EASY if recovery else quality_1
