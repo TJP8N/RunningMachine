@@ -475,17 +475,6 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     if bb is not None:
         result["body_battery"] = bb
 
-    # --- VO2max estimation from HR data (Uth et al., 2004) ---
-    # VO2max ≈ 15.3 × (maxHR / restingHR)
-    if "vo2max" not in result and "max_hr" in result and "resting_hr" in result:
-        try:
-            hr_ratio = float(result["max_hr"]) / float(result["resting_hr"])
-            estimated_vo2 = round(15.3 * hr_ratio, 1)
-            if 20.0 <= estimated_vo2 <= 90.0:
-                result["vo2max"] = estimated_vo2
-        except (ZeroDivisionError, ValueError, TypeError):
-            pass
-
     # --- Critical speed: estimate from LT speed ---
     # CS is typically ~95% of lactate threshold speed for trained runners.
     if "lthr_pace_min" in result and "lthr_pace_sec" in result:

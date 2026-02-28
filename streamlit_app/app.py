@@ -145,15 +145,50 @@ def _render_trace(trace):
 
 
 def _bump_widget_version() -> None:
-    """Increment widget version counter to force Streamlit to recreate widgets.
+    """Increment widget version counter and pre-seed new widget keys.
 
     Streamlit caches widget values by key.  When we change profile_data
-    programmatically (Garmin pull, profile load), the widgets ignore the new
-    ``value=`` parameter because they remember their old state under the same
-    key.  By incrementing a version counter embedded in every widget key, we
-    force Streamlit to treat them as *new* widgets that read from ``value=``.
+    programmatically (Garmin pull, profile load), the old-versioned widgets
+    remember their old state.  By incrementing a version counter we create
+    *new* widget keys.  We also pre-seed ``session_state[new_key]`` with the
+    profile_data value so Streamlit uses it as the widget's initial value.
     """
-    st.session_state["_wv"] = st.session_state.get("_wv", 0) + 1
+    new_v = st.session_state.get("_wv", 0) + 1
+    st.session_state["_wv"] = new_v
+
+    pdata = st.session_state.get("profile_data", {})
+    # Map: profile_data key → (widget short name, type cast)
+    # Types must match what each st.number_input / st.text_input / st.selectbox expects.
+    _FIELD_TO_WIDGET: list[tuple[str, str, type]] = [
+        ("name", "name", str),
+        ("age", "age", int),
+        ("weight_kg", "weight_kg", float),
+        ("sex", "sex", str),  # selectbox stores the string value
+        ("max_hr", "max_hr", int),
+        ("lthr_bpm", "lthr_bpm", int),
+        ("lthr_pace_min", "lt_min", int),
+        ("lthr_pace_sec", "lt_sec", int),
+        ("vo2max", "vo2max", float),
+        ("resting_hr", "rhr", int),
+        ("total_plan_weeks", "plan_weeks", int),
+        ("current_week", "cur_week", int),
+        ("day_of_week", "dow", int),
+        ("avg_weekly_km", "weekly_km", float),
+        ("hrv_rmssd", "hrv_rmssd", float),
+        ("hrv_baseline", "hrv_base", float),
+        ("sleep_score", "sleep", float),
+        ("body_battery", "bb", int),
+        ("critical_speed", "cs", float),
+        ("d_prime", "dp", float),
+        ("temperature", "temp", float),
+    ]
+    for field, widget_name, cast in _FIELD_TO_WIDGET:
+        if field in pdata and pdata[field] is not None:
+            new_key = f"{widget_name}_v{new_v}"
+            try:
+                st.session_state[new_key] = cast(pdata[field])
+            except (ValueError, TypeError):
+                pass
 
 
 def _wk(name: str) -> str:
@@ -302,8 +337,14 @@ with st.sidebar.expander("Advanced (optional)"):
 
 
 def _collect_profile_from_sidebar() -> dict:
-    """Collect all sidebar widget values into a dict."""
-    return {
+    """Collect profile values for workout generation.
+
+    Widget values are used as the base.  If Garmin data was loaded,
+    profile_data values override widget values for Garmin-sourced fields.
+    This is a safety net — Streamlit widgets may not visually update even
+    when profile_data is correctly populated.
+    """
+    profile = {
         "name": name,
         "age": age,
         "weight_kg": weight_kg,
@@ -327,6 +368,13 @@ def _collect_profile_from_sidebar() -> dict:
         "d_prime": d_prime,
         "temperature": temperature,
     }
+    # Override with Garmin-sourced values (handles widget state lag)
+    garmin_fields = st.session_state.get("garmin_profile_fields", set())
+    pdata = st.session_state.get("profile_data", {})
+    for field in garmin_fields:
+        if field in pdata and pdata[field] is not None and field in profile:
+            profile[field] = pdata[field]
+    return profile
 
 
 # --- Profile load/save (after widget definitions so _collect works) ---
@@ -401,6 +449,20 @@ with st.sidebar.expander("Garmin Connect"):
                         st.caption(f"{k}: {v}")
             except Exception as e:
                 st.error(f"Failed to pull metrics: {e}")
+
+        # Show pull error if any
+        _pull_err = st.session_state.pop("garmin_pull_error", None)
+        if _pull_err:
+            st.error(f"Profile pull error: {_pull_err}")
+
+        # Show mapped values for verification
+        _mapped_pdata = st.session_state.get("profile_data", {})
+        _garmin_flds = st.session_state.get("garmin_profile_fields", set())
+        if _garmin_flds:
+            with st.expander("Values used for workout generation"):
+                for f in sorted(_garmin_flds):
+                    if f in _mapped_pdata:
+                        st.caption(f"{f}: {_mapped_pdata[f]}")
 
         # Debug: show raw Garmin data for troubleshooting
         import json as _json
@@ -493,12 +555,35 @@ with st.sidebar.expander("Garmin Connect"):
 st.title("AI Endurance Beater")
 st.caption("Science-driven marathon training — powered by deterministic rules")
 
-# Garmin connection status banner
+# Garmin connection status banner — show actual values being used
 if _GARMIN_AVAILABLE and st.session_state.get("garmin_client"):
-    _garmin_label = "Garmin Connected"
-    if st.session_state.get("garmin_metrics"):
-        _garmin_label += " — metrics loaded"
-    st.success(_garmin_label)
+    _garmin_fields = st.session_state.get("garmin_profile_fields", set())
+    _pdata = st.session_state.get("profile_data", {})
+    if _garmin_fields and _pdata:
+        _vals = []
+        _labels = {
+            "age": "Age", "weight_kg": "Weight", "sex": "Sex",
+            "max_hr": "Max HR", "resting_hr": "RHR", "lthr_bpm": "LTHR",
+            "lthr_pace_min": "LT Pace", "vo2max": "VO2max",
+            "avg_weekly_km": "Wkly km", "hrv_rmssd": "HRV",
+            "sleep_score": "Sleep", "body_battery": "BB",
+            "critical_speed": "CS", "d_prime": "D'",
+        }
+        for f in sorted(_garmin_fields):
+            if f in _labels and f in _pdata:
+                v = _pdata[f]
+                if f == "lthr_pace_min" and "lthr_pace_sec" in _pdata:
+                    v = f"{_pdata['lthr_pace_min']}:{_pdata['lthr_pace_sec']:02d}/km"
+                elif f == "lthr_pace_sec":
+                    continue
+                elif isinstance(v, float):
+                    v = f"{v:.1f}" if v != int(v) else f"{int(v)}"
+                st.session_state.get("garmin_metrics")
+                _vals.append(f"**{_labels[f]}**: {v}")
+        if _vals:
+            st.success("Garmin: " + " | ".join(_vals))
+    else:
+        st.success("Garmin Connected")
 
 
 def _ensure_garmin_metrics() -> dict | None:
