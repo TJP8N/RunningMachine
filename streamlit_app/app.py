@@ -144,57 +144,30 @@ def _render_trace(trace):
         st.markdown(f"**Conflict Resolution:** {trace.conflict_resolution_notes}")
 
 
-def _bump_widget_version() -> None:
-    """Increment widget version counter and pre-seed new widget keys.
+# All sidebar widget keys use this prefix so we can nuke them when profile changes.
+_W_PREFIX = "w_"
 
-    Streamlit caches widget values by key.  When we change profile_data
-    programmatically (Garmin pull, profile load), the old-versioned widgets
-    remember their old state.  By incrementing a version counter we create
-    *new* widget keys.  We also pre-seed ``session_state[new_key]`` with the
-    profile_data value so Streamlit uses it as the widget's initial value.
+# Widget key names (stable, no versioning).
+_WIDGET_KEYS = [
+    "w_name", "w_age", "w_weight_kg", "w_sex",
+    "w_max_hr", "w_lthr_bpm", "w_lt_min", "w_lt_sec",
+    "w_vo2max", "w_rhr",
+    "w_plan_weeks", "w_cur_week", "w_dow",
+    "w_weekly_km",
+    "w_hrv_rmssd", "w_hrv_base", "w_sleep", "w_bb",
+    "w_cs", "w_dp", "w_temp",
+]
+
+
+def _nuke_widget_keys() -> None:
+    """Delete all sidebar widget keys from session_state.
+
+    This forces Streamlit to treat every widget as brand-new on the next
+    rerun, so the ``value=`` parameter (which reads from ``profile_data``)
+    is used instead of stale cached widget state.
     """
-    new_v = st.session_state.get("_wv", 0) + 1
-    st.session_state["_wv"] = new_v
-
-    pdata = st.session_state.get("profile_data", {})
-    # Map: profile_data key → (widget short name, type cast)
-    # Types must match what each st.number_input / st.text_input / st.selectbox expects.
-    _FIELD_TO_WIDGET: list[tuple[str, str, type]] = [
-        ("name", "name", str),
-        ("age", "age", int),
-        ("weight_kg", "weight_kg", float),
-        ("sex", "sex", str),  # selectbox stores the string value
-        ("max_hr", "max_hr", int),
-        ("lthr_bpm", "lthr_bpm", int),
-        ("lthr_pace_min", "lt_min", int),
-        ("lthr_pace_sec", "lt_sec", int),
-        ("vo2max", "vo2max", float),
-        ("resting_hr", "rhr", int),
-        ("total_plan_weeks", "plan_weeks", int),
-        ("current_week", "cur_week", int),
-        ("day_of_week", "dow", int),
-        ("avg_weekly_km", "weekly_km", float),
-        ("hrv_rmssd", "hrv_rmssd", float),
-        ("hrv_baseline", "hrv_base", float),
-        ("sleep_score", "sleep", float),
-        ("body_battery", "bb", int),
-        ("critical_speed", "cs", float),
-        ("d_prime", "dp", float),
-        ("temperature", "temp", float),
-    ]
-    for field, widget_name, cast in _FIELD_TO_WIDGET:
-        if field in pdata and pdata[field] is not None:
-            new_key = f"{widget_name}_v{new_v}"
-            try:
-                st.session_state[new_key] = cast(pdata[field])
-            except (ValueError, TypeError):
-                pass
-
-
-def _wk(name: str) -> str:
-    """Return a versioned widget key like ``age_v0``."""
-    v = st.session_state.get("_wv", 0)
-    return f"{name}_v{v}"
+    for k in _WIDGET_KEYS:
+        st.session_state.pop(k, None)
 
 
 def _pull_garmin_profile(gc: "GarminClient") -> None:
@@ -210,7 +183,10 @@ def _pull_garmin_profile(gc: "GarminClient") -> None:
             merged = {**existing, **mapped}
             st.session_state["profile_data"] = merged
             st.session_state["garmin_profile_fields"] = set(mapped.keys())
-            _bump_widget_version()
+            # Force widgets to re-read from profile_data on next rerun
+            _nuke_widget_keys()
+        else:
+            st.session_state["garmin_pull_error"] = "map_profile returned empty"
         # Also extract daily metrics from the same pull
         daily = map_daily_metrics(raw)
         if any(v is not None for v in daily.values()):
@@ -232,60 +208,60 @@ st.sidebar.title("Athlete Profile")
 
 # --- Demographics ---
 with st.sidebar.expander("Demographics", expanded=True):
-    name = st.text_input("Name", value=_get_pdata("name", "Runner"), key=_wk("name"))
-    age = st.number_input("Age", 16, 99, int(_get_pdata("age", 35)), key=_wk("age"))
+    name = st.text_input("Name", value=_get_pdata("name", "Runner"), key="w_name")
+    age = st.number_input("Age", 16, 99, int(_get_pdata("age", 35)), key="w_age")
     weight_kg = st.number_input(
         "Weight (kg)", 30.0, 200.0, float(_get_pdata("weight_kg", 70.0)),
-        step=0.5, key=_wk("weight_kg"),
+        step=0.5, key="w_weight_kg",
     )
     sex = st.selectbox(
         "Sex", ["M", "F"],
         index=0 if _get_pdata("sex", "M") == "M" else 1,
-        key=_wk("sex"),
+        key="w_sex",
     )
 
 # --- Physiology ---
 with st.sidebar.expander("Physiology", expanded=True):
     max_hr = st.number_input(
-        "Max HR", 120, 230, int(_get_pdata("max_hr", 185)), key=_wk("max_hr"),
+        "Max HR", 120, 230, int(_get_pdata("max_hr", 185)), key="w_max_hr",
     )
     lthr_bpm = st.number_input(
-        "LTHR (bpm)", 100, 220, int(_get_pdata("lthr_bpm", 165)), key=_wk("lthr_bpm"),
+        "LTHR (bpm)", 100, 220, int(_get_pdata("lthr_bpm", 165)), key="w_lthr_bpm",
     )
     col_lt1, col_lt2 = st.columns(2)
     with col_lt1:
         lthr_pace_min = st.number_input(
             "LT pace min", 2, 12, int(_get_pdata("lthr_pace_min", 5)),
-            key=_wk("lt_min"),
+            key="w_lt_min",
         )
     with col_lt2:
         lthr_pace_sec = st.number_input(
             "LT pace sec", 0, 59, int(_get_pdata("lthr_pace_sec", 30)),
-            key=_wk("lt_sec"),
+            key="w_lt_sec",
         )
     vo2max = st.number_input(
         "VO2max", 20.0, 90.0, float(_get_pdata("vo2max", 45.0)),
-        step=0.5, key=_wk("vo2max"),
+        step=0.5, key="w_vo2max",
     )
     resting_hr = st.number_input(
-        "Resting HR", 30, 100, int(_get_pdata("resting_hr", 50)), key=_wk("rhr"),
+        "Resting HR", 30, 100, int(_get_pdata("resting_hr", 50)), key="w_rhr",
     )
 
 # --- Training Plan ---
 with st.sidebar.expander("Training Plan", expanded=True):
     total_plan_weeks = st.number_input(
         "Total plan weeks", 4, 52, int(_get_pdata("total_plan_weeks", 16)),
-        key=_wk("plan_weeks"),
+        key="w_plan_weeks",
     )
     current_week = st.number_input(
         "Current week", 1, total_plan_weeks,
         int(min(_get_pdata("current_week", 1), total_plan_weeks)),
-        key=_wk("cur_week"),
+        key="w_cur_week",
     )
     day_of_week = st.number_input(
         "Day of week (1=Mon, 7=Sun)", 1, 7,
         int(_get_pdata("day_of_week", date.today().isoweekday())),
-        key=_wk("dow"),
+        key="w_dow",
     )
     goal_race_date = st.date_input(
         "Goal race date (optional)", value=None,
@@ -295,26 +271,26 @@ with st.sidebar.expander("Training Plan", expanded=True):
 with st.sidebar.expander("Training History", expanded=True):
     avg_weekly_km = st.number_input(
         "Avg weekly km", 0.0, 250.0, float(_get_pdata("avg_weekly_km", 35.0)),
-        step=1.0, key=_wk("weekly_km"),
+        step=1.0, key="w_weekly_km",
     )
 
 # --- Readiness (optional) ---
 with st.sidebar.expander("Readiness (optional)"):
     hrv_rmssd = st.number_input(
         "HRV RMSSD (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_rmssd", 0)),
-        step=1.0, key=_wk("hrv_rmssd"),
+        step=1.0, key="w_hrv_rmssd",
     )
     hrv_baseline = st.number_input(
         "HRV Baseline (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_baseline", 0)),
-        step=1.0, key=_wk("hrv_base"),
+        step=1.0, key="w_hrv_base",
     )
     sleep_score = st.number_input(
         "Sleep score 0-100 (0 = unknown)", 0.0, 100.0, float(_get_pdata("sleep_score", 0)),
-        step=1.0, key=_wk("sleep"),
+        step=1.0, key="w_sleep",
     )
     body_battery = st.number_input(
         "Body Battery 0-100 (0 = unknown)", 0, 100, int(_get_pdata("body_battery", 0)),
-        key=_wk("bb"),
+        key="w_bb",
     )
 
 # --- Advanced (optional) ---
@@ -322,17 +298,17 @@ with st.sidebar.expander("Advanced (optional)"):
     critical_speed = st.number_input(
         "Critical Speed m/s (0 = unknown)",
         0.0, 8.0, float(_get_pdata("critical_speed", 0.0)),
-        step=0.01, key=_wk("cs"),
+        step=0.01, key="w_cs",
     )
     d_prime = st.number_input(
         "D' meters (0 = unknown)",
         0.0, 1000.0, float(_get_pdata("d_prime", 0.0)),
-        step=1.0, key=_wk("dp"),
+        step=1.0, key="w_dp",
     )
     temperature = st.number_input(
         "Temperature C (0 = unknown)",
         0.0, 50.0, float(_get_pdata("temperature", 0.0)),
-        step=0.5, key=_wk("temp"),
+        step=0.5, key="w_temp",
     )
 
 
@@ -385,7 +361,7 @@ with st.sidebar.expander("Load / Save Profile"):
         if st.button("Load") and selected_profile != "(none)":
             loaded = load_profile(selected_profile)
             st.session_state["profile_data"] = loaded
-            _bump_widget_version()
+            _nuke_widget_keys()
             st.rerun()
     else:
         st.caption("No saved profiles yet.")
