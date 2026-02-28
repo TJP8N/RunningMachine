@@ -1,4 +1,4 @@
-"""AIEnduranceBeater — Streamlit MVP Dashboard.
+"""RunningMachine — Streamlit MVP Dashboard.
 
 Run with:
     .venv38/Scripts/streamlit run streamlit_app/app.py
@@ -55,7 +55,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="AI Endurance Beater",
+    page_title="RunningMachine",
     page_icon="🏃",
     layout="wide",
 )
@@ -206,109 +206,104 @@ def _get_pdata(key: str, default):
 
 st.sidebar.title("Athlete Profile")
 
+
+# --- Initialize widget defaults from profile_data or hardcoded defaults ---
+# This runs BEFORE widget creation. When a widget key doesn't exist in
+# session_state (first load, or after nuke from Garmin pull), we seed it
+# here from profile_data. Widgets only use key=, never value=.
+_WIDGET_DEFAULTS: list[tuple[str, str, type, object]] = [
+    # (widget_key, profile_data_key, type_cast, hardcoded_default)
+    ("w_name", "name", str, "Runner"),
+    ("w_age", "age", int, 35),
+    ("w_weight_kg", "weight_kg", float, 70.0),
+    ("w_sex", "sex", str, "M"),
+    ("w_max_hr", "max_hr", int, 185),
+    ("w_lthr_bpm", "lthr_bpm", int, 165),
+    ("w_lt_min", "lthr_pace_min", int, 5),
+    ("w_lt_sec", "lthr_pace_sec", int, 30),
+    ("w_vo2max", "vo2max", float, 45.0),
+    ("w_rhr", "resting_hr", int, 50),
+    ("w_plan_weeks", "total_plan_weeks", int, 16),
+    ("w_cur_week", "current_week", int, 1),
+    ("w_dow", "day_of_week", int, date.today().isoweekday()),
+    ("w_weekly_km", "avg_weekly_km", float, 35.0),
+    ("w_hrv_rmssd", "hrv_rmssd", float, 0.0),
+    ("w_hrv_base", "hrv_baseline", float, 0.0),
+    ("w_sleep", "sleep_score", float, 0.0),
+    ("w_bb", "body_battery", int, 0),
+    ("w_cs", "critical_speed", float, 0.0),
+    ("w_dp", "d_prime", float, 0.0),
+    ("w_temp", "temperature", float, 0.0),
+]
+for _wkey, _pkey, _cast, _default in _WIDGET_DEFAULTS:
+    if _wkey not in st.session_state:
+        _val = _get_pdata(_pkey, _default)
+        try:
+            st.session_state[_wkey] = _cast(_val)
+        except (ValueError, TypeError):
+            st.session_state[_wkey] = _cast(_default)
+
 # --- Demographics ---
 with st.sidebar.expander("Demographics", expanded=True):
-    name = st.text_input("Name", value=_get_pdata("name", "Runner"), key="w_name")
-    age = st.number_input("Age", 16, 99, int(_get_pdata("age", 35)), key="w_age")
-    weight_kg = st.number_input(
-        "Weight (kg)", 30.0, 200.0, float(_get_pdata("weight_kg", 70.0)),
-        step=0.5, key="w_weight_kg",
-    )
-    sex = st.selectbox(
-        "Sex", ["M", "F"],
-        index=0 if _get_pdata("sex", "M") == "M" else 1,
-        key="w_sex",
-    )
+    name = st.text_input("Name", key="w_name")
+    age = st.number_input("Age", 16, 99, key="w_age")
+    weight_kg = st.number_input("Weight (kg)", 30.0, 200.0, step=0.5, key="w_weight_kg")
+    sex = st.selectbox("Sex", ["M", "F"], key="w_sex")
 
 # --- Physiology ---
 with st.sidebar.expander("Physiology", expanded=True):
-    max_hr = st.number_input(
-        "Max HR", 120, 230, int(_get_pdata("max_hr", 185)), key="w_max_hr",
-    )
-    lthr_bpm = st.number_input(
-        "LTHR (bpm)", 100, 220, int(_get_pdata("lthr_bpm", 165)), key="w_lthr_bpm",
-    )
+    max_hr = st.number_input("Max HR", 120, 230, key="w_max_hr")
+    lthr_bpm = st.number_input("LTHR (bpm)", 100, 220, key="w_lthr_bpm")
     col_lt1, col_lt2 = st.columns(2)
     with col_lt1:
-        lthr_pace_min = st.number_input(
-            "LT pace min", 2, 12, int(_get_pdata("lthr_pace_min", 5)),
-            key="w_lt_min",
-        )
+        lthr_pace_min = st.number_input("LT pace min", 2, 12, key="w_lt_min")
     with col_lt2:
-        lthr_pace_sec = st.number_input(
-            "LT pace sec", 0, 59, int(_get_pdata("lthr_pace_sec", 30)),
-            key="w_lt_sec",
-        )
-    vo2max = st.number_input(
-        "VO2max", 20.0, 90.0, float(_get_pdata("vo2max", 45.0)),
-        step=0.5, key="w_vo2max",
-    )
-    resting_hr = st.number_input(
-        "Resting HR", 30, 100, int(_get_pdata("resting_hr", 50)), key="w_rhr",
-    )
+        lthr_pace_sec = st.number_input("LT pace sec", 0, 59, key="w_lt_sec")
+    vo2max = st.number_input("VO2max", 20.0, 90.0, step=0.5, key="w_vo2max")
+    resting_hr = st.number_input("Resting HR", 30, 100, key="w_rhr")
 
 # --- Training Plan ---
 with st.sidebar.expander("Training Plan", expanded=True):
-    total_plan_weeks = st.number_input(
-        "Total plan weeks", 4, 52, int(_get_pdata("total_plan_weeks", 16)),
-        key="w_plan_weeks",
-    )
+    total_plan_weeks = st.number_input("Total plan weeks", 4, 52, key="w_plan_weeks")
     current_week = st.number_input(
-        "Current week", 1, total_plan_weeks,
-        int(min(_get_pdata("current_week", 1), total_plan_weeks)),
-        key="w_cur_week",
+        "Current week", 1, total_plan_weeks, key="w_cur_week",
     )
     day_of_week = st.number_input(
-        "Day of week (1=Mon, 7=Sun)", 1, 7,
-        int(_get_pdata("day_of_week", date.today().isoweekday())),
-        key="w_dow",
+        "Day of week (1=Mon, 7=Sun)", 1, 7, key="w_dow",
     )
-    goal_race_date = st.date_input(
-        "Goal race date (optional)", value=None,
-    )
+    goal_race_date = st.date_input("Goal race date (optional)", value=None)
 
 # --- Training History ---
 with st.sidebar.expander("Training History", expanded=True):
     avg_weekly_km = st.number_input(
-        "Avg weekly km", 0.0, 250.0, float(_get_pdata("avg_weekly_km", 35.0)),
-        step=1.0, key="w_weekly_km",
+        "Avg weekly km", 0.0, 250.0, step=1.0, key="w_weekly_km",
     )
 
 # --- Readiness (optional) ---
 with st.sidebar.expander("Readiness (optional)"):
     hrv_rmssd = st.number_input(
-        "HRV RMSSD (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_rmssd", 0)),
-        step=1.0, key="w_hrv_rmssd",
+        "HRV RMSSD (0 = unknown)", 0.0, 200.0, step=1.0, key="w_hrv_rmssd",
     )
     hrv_baseline = st.number_input(
-        "HRV Baseline (0 = unknown)", 0.0, 200.0, float(_get_pdata("hrv_baseline", 0)),
-        step=1.0, key="w_hrv_base",
+        "HRV Baseline (0 = unknown)", 0.0, 200.0, step=1.0, key="w_hrv_base",
     )
     sleep_score = st.number_input(
-        "Sleep score 0-100 (0 = unknown)", 0.0, 100.0, float(_get_pdata("sleep_score", 0)),
-        step=1.0, key="w_sleep",
+        "Sleep score 0-100 (0 = unknown)", 0.0, 100.0, step=1.0, key="w_sleep",
     )
     body_battery = st.number_input(
-        "Body Battery 0-100 (0 = unknown)", 0, 100, int(_get_pdata("body_battery", 0)),
-        key="w_bb",
+        "Body Battery 0-100 (0 = unknown)", 0, 100, key="w_bb",
     )
 
 # --- Advanced (optional) ---
 with st.sidebar.expander("Advanced (optional)"):
     critical_speed = st.number_input(
-        "Critical Speed m/s (0 = unknown)",
-        0.0, 8.0, float(_get_pdata("critical_speed", 0.0)),
-        step=0.01, key="w_cs",
+        "Critical Speed m/s (0 = unknown)", 0.0, 8.0, step=0.01, key="w_cs",
     )
     d_prime = st.number_input(
-        "D' meters (0 = unknown)",
-        0.0, 1000.0, float(_get_pdata("d_prime", 0.0)),
-        step=1.0, key="w_dp",
+        "D' meters (0 = unknown)", 0.0, 1000.0, step=1.0, key="w_dp",
     )
     temperature = st.number_input(
-        "Temperature C (0 = unknown)",
-        0.0, 50.0, float(_get_pdata("temperature", 0.0)),
-        step=0.5, key="w_temp",
+        "Temperature C (0 = unknown)", 0.0, 50.0, step=0.5, key="w_temp",
     )
 
 
@@ -426,8 +421,8 @@ with st.sidebar.expander("Garmin Connect"):
             except Exception as e:
                 st.error(f"Failed to pull metrics: {e}")
 
-        # Show pull error if any
-        _pull_err = st.session_state.pop("garmin_pull_error", None)
+        # Show pull error if any (don't pop — keep visible)
+        _pull_err = st.session_state.get("garmin_pull_error")
         if _pull_err:
             st.error(f"Profile pull error: {_pull_err}")
 
@@ -528,7 +523,7 @@ with st.sidebar.expander("Garmin Connect"):
 # Main content — 3 tabs
 # ---------------------------------------------------------------------------
 
-st.title("AI Endurance Beater")
+st.title("RunningMachine")
 st.caption("Science-driven marathon training — powered by deterministic rules")
 
 # Garmin connection status banner — show actual values being used

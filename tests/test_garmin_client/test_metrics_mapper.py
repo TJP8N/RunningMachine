@@ -286,7 +286,7 @@ class TestMapProfile:
     def real_garmin_profile(self):
         """Profile data matching actual Garmin API responses."""
         return {
-            "user_settings": {
+            "user_profile": {
                 "id": 12345,
                 "userData": {
                     "gender": "MALE",
@@ -297,7 +297,7 @@ class TestMapProfile:
                     "lactateThresholdSpeed": 0.39444334,
                 },
             },
-            "user_profile": {
+            "user_settings": {
                 "displayName": "testuser123",
                 "preferredLocale": "en",
             },
@@ -362,16 +362,10 @@ class TestMapProfile:
         result = map_profile(real_garmin_profile)
         assert result["weight_kg"] == 82.6
 
-    def test_name_skips_display_name(self, real_garmin_profile):
+    def test_name_not_extracted(self, real_garmin_profile):
         result = map_profile(real_garmin_profile)
-        # displayName is a username — should NOT be used as name
+        # No real first/last name in Garmin API — only displayName (username)
         assert "name" not in result
-
-    def test_name_uses_real_name_when_available(self, real_garmin_profile):
-        real_garmin_profile["user_profile"]["firstName"] = "John"
-        real_garmin_profile["user_profile"]["lastName"] = "Doe"
-        result = map_profile(real_garmin_profile)
-        assert result["name"] == "John Doe"
 
     def test_max_hr_estimated_from_age(self, real_garmin_profile):
         # Tanaka: 208 - 0.7 * 30 = 187
@@ -402,7 +396,7 @@ class TestMapProfile:
 
     def test_lthr_fallback_to_settings(self):
         raw = {
-            "user_settings": {
+            "user_profile": {
                 "userData": {
                     "lactateThresholdHeartRate": 170,
                     "lactateThresholdSpeed": 0.4,
@@ -445,7 +439,7 @@ class TestMapProfile:
 
     def test_bounds_filter_out_of_range(self):
         raw = {
-            "user_settings": {
+            "user_profile": {
                 "userData": {"weight": 15000.0},  # 15 kg — below 30 min
             },
         }

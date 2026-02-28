@@ -1,7 +1,7 @@
 services:
-  ai-endurance:
+  running-machine:
     build: .
-    container_name: ai-endurance-beater
+    container_name: running-machine
     ports:
       - "8501:8501"
     volumes:
@@ -11,7 +11,7 @@ services:
 
   scheduler:
     build: .
-    container_name: ai-endurance-scheduler
+    container_name: running-machine-scheduler
     command: ["python", "-m", "scheduler.nightly", "--daemon"]
     volumes:
       - profiles:/app/streamlit_app/profiles

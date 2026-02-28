@@ -120,7 +120,7 @@ def nightly_job() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="AIEnduranceBeater nightly scheduler")
+    parser = argparse.ArgumentParser(description="RunningMachine nightly scheduler")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--once", action="store_true", help="Run once and exit")
     group.add_argument("--daemon", action="store_true", help="Run as APScheduler daemon")

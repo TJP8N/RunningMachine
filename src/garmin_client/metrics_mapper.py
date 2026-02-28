@@ -277,16 +277,22 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     """
     result: dict[str, Any] = {}
 
-    # --- User settings: PRIMARY source for demographics + biometrics ---
-    # get_userprofile_settings() returns {id, userData: {gender, weight,
-    # birthDate, lactateThresholdHeartRate, lactateThresholdSpeed, ...}, ...}
+    # --- Demographics + biometrics from userData ---
+    # The userData sub-object contains gender, weight, birthDate, and
+    # lactate threshold values.  It lives under EITHER user_profile or
+    # user_settings depending on the garminconnect library version.
+    # Try both locations.
     lt_hr_from_settings: Any = None
     lt_speed_from_settings: Any = None
+    user_data: dict | None = None
 
-    settings = raw.get("user_settings")
-    if isinstance(settings, dict):
-        user_data = settings.get("userData") or settings
+    for section_key in ("user_profile", "user_settings"):
+        section = raw.get(section_key)
+        if isinstance(section, dict) and "userData" in section:
+            user_data = section["userData"]
+            break
 
+    if isinstance(user_data, dict):
         # Sex / gender
         gender = user_data.get("gender")
         if gender:
@@ -309,33 +315,9 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, TypeError):
                 pass
 
-        # Stash LT values from settings as fallback
+        # Stash LT values as fallback
         lt_hr_from_settings = user_data.get("lactateThresholdHeartRate")
         lt_speed_from_settings = user_data.get("lactateThresholdSpeed")
-
-    # --- User profile: name only if real first/last name available ---
-    # get_user_profile() returns {displayName, preferredLocale, ...}
-    # displayName is a USERNAME (e.g. "tjpaton8"), not a real name.
-    profile = raw.get("user_profile")
-    if isinstance(profile, dict):
-        first = profile.get("firstName") or ""
-        last = profile.get("lastName") or ""
-        full_name = f"{first} {last}".strip()
-        # Only set name if we found a real first/last name
-        if full_name:
-            result["name"] = str(full_name)
-
-        # Fallback demographics from profile (unlikely, but just in case)
-        if "age" not in result:
-            birth = profile.get("birthDate")
-            if birth:
-                age = _birth_date_to_age(birth)
-                if age:
-                    result["age"] = age
-        if "sex" not in result:
-            gender = profile.get("gender")
-            if gender:
-                result["sex"] = "F" if str(gender).upper() in ("FEMALE", "F") else "M"
 
     # --- Body composition: weight fallback ---
     body_comp = raw.get("body_composition")
@@ -356,16 +338,14 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     if vo2 is not None:
         result["vo2max"] = vo2
 
-    # VO2max fallback: check user_settings.userData.vo2MaxRunning
-    if "vo2max" not in result:
-        if isinstance(settings, dict):
-            user_data_for_vo2 = (settings.get("userData") or settings)
-            vo2_setting = user_data_for_vo2.get("vo2MaxRunning")
-            if vo2_setting is not None:
-                try:
-                    result["vo2max"] = float(vo2_setting)
-                except (ValueError, TypeError):
-                    pass
+    # VO2max fallback: check userData.vo2MaxRunning
+    if "vo2max" not in result and isinstance(user_data, dict):
+        vo2_setting = user_data.get("vo2MaxRunning")
+        if vo2_setting is not None:
+            try:
+                result["vo2max"] = float(vo2_setting)
+            except (ValueError, TypeError):
+                pass
 
     # --- Max HR ---
     # Strategy 1: observed max from all recent activities

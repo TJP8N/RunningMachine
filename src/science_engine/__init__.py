@@ -1,1 +1,1 @@
-"""AI Endurance Beater — Science Engine for marathon training prescription."""
+"""RunningMachine — Science Engine for marathon training prescription."""
