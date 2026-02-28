@@ -8,6 +8,8 @@ Requires the .venv38 environment (Python 3.8+, streamlit installed).
 
 from __future__ import annotations
 
+import io
+import zipfile
 from datetime import date
 
 import streamlit as st
@@ -15,6 +17,7 @@ import streamlit as st
 from science_engine.engine import ScienceEngine
 from science_engine.models.decision_trace import RuleStatus
 from science_engine.models.enums import DurationType, SessionType, StepType
+from science_engine.serialization import to_garmin_json_string
 
 from helpers import (
     DAY_NAMES,
@@ -323,6 +326,14 @@ with tab_today:
 
         if workout.decision_summary:
             st.info(workout.decision_summary)
+
+        st.divider()
+        st.download_button(
+            "Download Garmin Workout (.json)",
+            data=to_garmin_json_string(workout),
+            file_name=f"{workout.workout_title[:32].replace(' ', '_')}.json",
+            mime="application/json",
+        )
     else:
         st.info("Click **Generate Today's Workout** to get started.")
 
@@ -354,6 +365,19 @@ with tab_week:
 
         if plan.is_recovery_week:
             st.warning("Recovery week — reduced volume and intensity")
+
+        # Weekly zip download
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for j, wo in enumerate(week_workouts):
+                fname = f"{DAY_NAMES[j]}_{wo.workout_title[:24].replace(' ', '_')}.json"
+                zf.writestr(fname, to_garmin_json_string(wo))
+        st.download_button(
+            "Download Weekly Plan (.zip)",
+            data=zip_buf.getvalue(),
+            file_name=f"week_{plan.week_number}_plan.zip",
+            mime="application/zip",
+        )
 
         # 7-column day grid
         st.subheader("Week at a Glance")
@@ -388,6 +412,13 @@ with tab_week:
                 )
                 if wo.steps:
                     _render_steps(wo.steps)
+                st.download_button(
+                    "Download Garmin Workout (.json)",
+                    data=to_garmin_json_string(wo),
+                    file_name=f"{DAY_NAMES[i]}_{wo.workout_title[:24].replace(' ', '_')}.json",
+                    mime="application/json",
+                    key=f"dl_day_{i}",
+                )
     else:
         st.info("Click **Generate Weekly Plan** to plan your training week.")
 
