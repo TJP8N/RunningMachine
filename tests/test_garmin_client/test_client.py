@@ -34,20 +34,20 @@ def client(mock_garmin):
 
 class TestUploadWorkout:
     def test_returns_workout_id(self, client, mock_garmin):
-        mock_garmin.add_workout.return_value = {"workoutId": 12345}
+        mock_garmin.upload_workout.return_value = {"workoutId": 12345}
         wid = client.upload_workout({"workoutName": "Test"})
         assert wid == 12345
-        mock_garmin.add_workout.assert_called_once_with({"workoutName": "Test"})
+        mock_garmin.upload_workout.assert_called_once_with({"workoutName": "Test"})
 
     def test_raises_on_unexpected_response(self, client, mock_garmin):
-        mock_garmin.add_workout.return_value = {"error": "bad"}
+        mock_garmin.upload_workout.return_value = {"error": "bad"}
         with pytest.raises(GarminAPIError, match="Unexpected upload response"):
             client.upload_workout({"workoutName": "Test"})
 
     def test_raises_on_api_error(self, client, mock_garmin):
         exc = Exception("Server error")
         exc.status = 500
-        mock_garmin.add_workout.side_effect = exc
+        mock_garmin.upload_workout.side_effect = exc
         with pytest.raises(GarminAPIError):
             client.upload_workout({"workoutName": "Test"})
 
@@ -75,10 +75,10 @@ class TestScheduleWorkout:
 
 class TestUploadAndSchedule:
     def test_combines_upload_and_schedule(self, client, mock_garmin):
-        mock_garmin.add_workout.return_value = {"workoutId": 99}
+        mock_garmin.upload_workout.return_value = {"workoutId": 99}
         wid = client.upload_and_schedule({"workoutName": "X"}, date(2025, 3, 10))
         assert wid == 99
-        mock_garmin.add_workout.assert_called_once()
+        mock_garmin.upload_workout.assert_called_once()
         mock_garmin.garth.post.assert_called_once()
 
 
@@ -89,13 +89,13 @@ class TestUploadAndSchedule:
 
 class TestUploadWeek:
     def test_uploads_7_days(self, client, mock_garmin):
-        mock_garmin.add_workout.side_effect = [
+        mock_garmin.upload_workout.side_effect = [
             {"workoutId": i} for i in range(7)
         ]
         jsons = [{"workoutName": f"Day {i}"} for i in range(7)]
         ids = client.upload_week(jsons, date(2025, 3, 10))
         assert ids == [0, 1, 2, 3, 4, 5, 6]
-        assert mock_garmin.add_workout.call_count == 7
+        assert mock_garmin.upload_workout.call_count == 7
         assert mock_garmin.garth.post.call_count == 7
 
 
@@ -149,7 +149,7 @@ class TestRetryLogic:
     def test_retries_on_429(self, mock_sleep, client, mock_garmin):
         exc_429 = Exception("rate limited")
         exc_429.status = 429
-        mock_garmin.add_workout.side_effect = [
+        mock_garmin.upload_workout.side_effect = [
             exc_429,
             exc_429,
             {"workoutId": 42},
@@ -162,7 +162,7 @@ class TestRetryLogic:
     def test_raises_after_max_retries(self, mock_sleep, client, mock_garmin):
         exc_429 = Exception("rate limited")
         exc_429.status = 429
-        mock_garmin.add_workout.side_effect = [exc_429] * 3
+        mock_garmin.upload_workout.side_effect = [exc_429] * 3
         with pytest.raises(GarminRateLimitError):
             client.upload_workout({"workoutName": "Fail"})
 

@@ -9,7 +9,7 @@ from garmin_client.exceptions import (
     GarminMFARequired,
     GarminRateLimitError,
 )
-from garmin_client.metrics_mapper import map_daily_metrics
+from garmin_client.metrics_mapper import map_daily_metrics, map_profile
 
 __all__ = [
     "GarminClient",
@@ -20,4 +20,5 @@ __all__ = [
     "GarminMFARequired",
     "GarminRateLimitError",
     "map_daily_metrics",
+    "map_profile",
 ]

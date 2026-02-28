@@ -43,6 +43,7 @@ try:
         GarminMFARequired,
         complete_mfa_login,
         map_daily_metrics,
+        map_profile,
     )
 
     _GARMIN_AVAILABLE = True
@@ -141,6 +142,27 @@ def _render_trace(trace):
     if trace.conflict_resolution_notes:
         st.divider()
         st.markdown(f"**Conflict Resolution:** {trace.conflict_resolution_notes}")
+
+
+def _pull_garmin_profile(gc: "GarminClient") -> None:
+    """Pull Garmin profile and merge into profile_data for sidebar pre-fill."""
+    if not _GARMIN_AVAILABLE:
+        return
+    try:
+        raw = gc.pull_profile()
+        mapped = map_profile(raw)
+        if mapped:
+            existing = st.session_state.get("profile_data", {})
+            # Garmin values fill in, but don't overwrite user edits
+            merged = {**mapped, **existing}
+            st.session_state["profile_data"] = merged
+            st.session_state["garmin_profile_fields"] = set(mapped.keys())
+        # Also extract daily metrics from the same pull
+        daily = map_daily_metrics(raw)
+        if any(v is not None for v in daily.values()):
+            st.session_state["garmin_metrics"] = daily
+    except Exception:
+        pass  # Non-critical — user can still fill manually
 
 
 def _get_pdata(key: str, default):
@@ -298,10 +320,36 @@ with st.sidebar.expander("Garmin Connect"):
         )
     elif st.session_state.get("garmin_client") is not None:
         st.success("Connected to Garmin")
+
+        # Show which fields were auto-populated
+        garmin_fields = st.session_state.get("garmin_profile_fields", set())
+        if garmin_fields:
+            _field_labels = {
+                "name": "Name", "age": "Age", "sex": "Sex",
+                "weight_kg": "Weight", "max_hr": "Max HR",
+                "resting_hr": "Resting HR", "vo2max": "VO2max",
+                "lthr_bpm": "LTHR", "lthr_pace_min": "LT Pace",
+                "avg_weekly_km": "Weekly km", "hrv_rmssd": "HRV",
+                "sleep_score": "Sleep", "body_battery": "Body Battery",
+            }
+            populated = [_field_labels.get(f, f) for f in garmin_fields if f in _field_labels]
+            if populated:
+                st.caption(f"Auto-filled from Garmin: {', '.join(sorted(populated))}")
+
         if st.button("Disconnect"):
             st.session_state.pop("garmin_client", None)
             st.session_state.pop("garmin_metrics", None)
+            st.session_state.pop("garmin_profile_fields", None)
             st.rerun()
+
+        if st.button("Refresh Garmin Data"):
+            try:
+                gc = st.session_state["garmin_client"]
+                _pull_garmin_profile(gc)
+                st.success("Profile and metrics refreshed")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Refresh failed: {e}")
 
         if st.button("Pull Today's Metrics"):
             try:
@@ -338,7 +386,8 @@ with st.sidebar.expander("Garmin Connect"):
                     for k in ("garmin_mfa_pending", "garmin_mfa_client",
                               "garmin_mfa_state", "garmin_mfa_token_dir"):
                         st.session_state.pop(k, None)
-                    st.success("Connected!")
+                    _pull_garmin_profile(gc)
+                    st.success("Connected! Profile data loaded from Garmin.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"MFA verification failed: {e}")
@@ -365,7 +414,8 @@ with st.sidebar.expander("Garmin Connect"):
                         email=garmin_email, password=garmin_password
                     )
                     st.session_state["garmin_client"] = gc
-                    st.success("Connected!")
+                    _pull_garmin_profile(gc)
+                    st.success("Connected! Profile data loaded from Garmin.")
                     st.rerun()
                 except GarminMFARequired as mfa_exc:
                     # Stash partially-authed client and MFA state

@@ -64,7 +64,7 @@ class GarminClient:
 
         Returns the workoutId assigned by Garmin.
         """
-        resp = self._safe_call(self._garmin.add_workout, workout_json)
+        resp = self._safe_call(self._garmin.upload_workout, workout_json)
         if isinstance(resp, dict) and "workoutId" in resp:
             workout_id = int(resp["workoutId"])
             logger.info("Uploaded workout id=%d", workout_id)
@@ -146,6 +146,73 @@ class GarminClient:
             except Exception:
                 logger.warning("Failed to pull %s for %s", key, date_str)
                 result[key] = None
+        return result
+
+    # ------------------------------------------------------------------
+    # Profile pull
+    # ------------------------------------------------------------------
+
+    def pull_profile(self, cdate: date | None = None) -> dict[str, Any]:
+        """Pull user profile, biometrics, and recent training data.
+
+        Returns a dict with keys: user_profile, user_settings,
+        body_composition, max_metrics, resting_hr, lactate_threshold,
+        recent_activities, training_readiness, hrv, sleep, body_battery.
+        Individual keys may be None on failure.
+        """
+        from datetime import timedelta
+
+        if cdate is None:
+            cdate = date.today()
+        date_str = cdate.isoformat()
+
+        # Date range for recent activities (last 6 weeks)
+        start_date = (cdate - timedelta(days=42)).isoformat()
+
+        result: dict[str, Any] = {}
+
+        # Simple single-arg-or-no-arg endpoints
+        simple: dict[str, tuple] = {
+            "user_profile": (self._garmin.get_user_profile,),
+            "user_settings": (self._garmin.get_userprofile_settings,),
+            "body_composition": (self._garmin.get_body_composition, date_str),
+            "max_metrics": (self._garmin.get_max_metrics, date_str),
+            "resting_hr": (self._garmin.get_rhr_day, date_str),
+            "training_readiness": (self._garmin.get_training_readiness, date_str),
+            "hrv": (self._garmin.get_hrv_data, date_str),
+            "sleep": (self._garmin.get_sleep_data, date_str),
+            "body_battery": (self._garmin.get_body_battery, date_str),
+            "stats": (self._garmin.get_stats, date_str),
+        }
+        for key, (fn, *args) in simple.items():
+            try:
+                result[key] = self._safe_call(fn, *args)
+            except Exception:
+                logger.warning("Failed to pull %s", key)
+                result[key] = None
+
+        # Lactate threshold (keyword arg)
+        try:
+            result["lactate_threshold"] = self._safe_call(
+                self._garmin.get_lactate_threshold, latest=True
+            )
+        except Exception:
+            logger.warning("Failed to pull lactate_threshold")
+            result["lactate_threshold"] = None
+
+        # Recent running activities for weekly volume
+        try:
+            activities = self._safe_call(
+                self._garmin.get_activities_by_date,
+                start_date,
+                date_str,
+                "running",
+            )
+            result["recent_activities"] = activities
+        except Exception:
+            logger.warning("Failed to pull recent_activities")
+            result["recent_activities"] = None
+
         return result
 
     # ------------------------------------------------------------------

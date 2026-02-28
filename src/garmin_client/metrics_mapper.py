@@ -1,11 +1,14 @@
 """Pure functions mapping Garmin API response dicts to AthleteState fields.
 
-No I/O — takes raw dicts from GarminClient.pull_daily_metrics() and returns
-a flat dict whose keys match AthleteState field names.
+No I/O — takes raw dicts from GarminClient methods and returns
+flat dicts whose keys match sidebar profile field names or AthleteState
+field names.
 """
 
 from __future__ import annotations
 
+import math
+from datetime import date, datetime
 from typing import Any, Optional
 
 from science_engine.models.enums import ReadinessLevel
@@ -200,3 +203,161 @@ def _extract_readiness(data: Any) -> Optional[ReadinessLevel]:
     if score >= 25:
         return ReadinessLevel.SUPPRESSED
     return ReadinessLevel.VERY_SUPPRESSED
+
+
+# ---------------------------------------------------------------------------
+# Profile mapping — GarminClient.pull_profile() → sidebar fields
+# ---------------------------------------------------------------------------
+
+
+def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
+    """Map a full pull_profile() result to sidebar-compatible field dict.
+
+    Returns a dict with keys matching the sidebar profile fields.
+    Only includes keys where a value was successfully extracted.
+    Values are the appropriate types for the sidebar widgets.
+    """
+    result: dict[str, Any] = {}
+
+    # --- User profile: name, age, sex ---
+    profile = raw.get("user_profile")
+    if isinstance(profile, dict):
+        display = profile.get("displayName") or profile.get("userName")
+        if display:
+            result["name"] = str(display)
+
+        # Age from birth date
+        birth = profile.get("birthDate")
+        if birth:
+            age = _birth_date_to_age(birth)
+            if age:
+                result["age"] = age
+
+        # Sex / gender
+        gender = profile.get("gender")
+        if gender:
+            result["sex"] = "F" if str(gender).upper() in ("FEMALE", "F") else "M"
+
+    # --- User settings: weight, height ---
+    settings = raw.get("user_settings")
+    if isinstance(settings, dict):
+        # Weight is in grams in userData
+        user_data = settings.get("userData") or settings
+        weight_g = user_data.get("weight")
+        if weight_g is not None:
+            try:
+                result["weight_kg"] = round(float(weight_g) / 1000.0, 1)
+            except (ValueError, TypeError):
+                pass
+
+    # --- Body composition: weight fallback ---
+    body_comp = raw.get("body_composition")
+    if isinstance(body_comp, dict) and "weight_kg" not in result:
+        weight = body_comp.get("weight")
+        if weight is not None:
+            try:
+                result["weight_kg"] = round(float(weight) / 1000.0, 1)
+            except (ValueError, TypeError):
+                pass
+
+    # --- Max metrics: VO2max ---
+    vo2 = _extract_vo2max(raw.get("max_metrics"))
+    if vo2 is not None:
+        result["vo2max"] = vo2
+
+    # --- Resting HR ---
+    rhr_data = raw.get("resting_hr")
+    if isinstance(rhr_data, dict):
+        for key in ("restingHeartRate", "rhr"):
+            val = rhr_data.get(key)
+            if val is not None:
+                try:
+                    result["resting_hr"] = int(val)
+                    break
+                except (ValueError, TypeError):
+                    pass
+    # Fallback from stats
+    if "resting_hr" not in result:
+        rhr_from_stats = _extract_resting_hr(raw.get("stats"))
+        if rhr_from_stats is not None:
+            result["resting_hr"] = rhr_from_stats
+
+    # --- Max HR from stats ---
+    stats = raw.get("stats")
+    if isinstance(stats, dict):
+        max_hr = stats.get("maxHeartRate")
+        if max_hr is not None:
+            try:
+                result["max_hr"] = int(max_hr)
+            except (ValueError, TypeError):
+                pass
+
+    # --- Lactate threshold: LTHR bpm + pace ---
+    lt = raw.get("lactate_threshold")
+    if isinstance(lt, dict):
+        lt_hr = lt.get("heartRateThreshold")
+        if lt_hr is not None:
+            try:
+                result["lthr_bpm"] = int(lt_hr)
+            except (ValueError, TypeError):
+                pass
+        # Speed in m/s → pace in s/km → min:sec
+        lt_speed = lt.get("runningLactateThresholdSpeed")
+        if lt_speed is not None:
+            try:
+                speed_ms = float(lt_speed) / 100.0  # cm/s → m/s
+                if speed_ms > 0:
+                    pace_s_per_km = 1000.0 / speed_ms
+                    result["lthr_pace_min"] = int(pace_s_per_km // 60)
+                    result["lthr_pace_sec"] = int(pace_s_per_km % 60)
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
+    # --- Recent activities: avg weekly km ---
+    activities = raw.get("recent_activities")
+    if isinstance(activities, list) and len(activities) > 0:
+        total_km = 0.0
+        for act in activities:
+            if isinstance(act, dict):
+                dist = act.get("distance")
+                if dist is not None:
+                    try:
+                        total_km += float(dist) / 1000.0  # meters → km
+                    except (ValueError, TypeError):
+                        pass
+        # 6 weeks of data → avg per week
+        if total_km > 0:
+            result["avg_weekly_km"] = round(total_km / 6.0, 1)
+
+    # --- Readiness metrics (daily) ---
+    rmssd, baseline = _extract_hrv(raw.get("hrv"))
+    if rmssd is not None:
+        result["hrv_rmssd"] = rmssd
+    if baseline is not None:
+        result["hrv_baseline"] = baseline
+
+    sleep = _extract_sleep_score(raw.get("sleep"))
+    if sleep is not None:
+        result["sleep_score"] = sleep
+
+    bb = _extract_body_battery(raw.get("body_battery"))
+    if bb is not None:
+        result["body_battery"] = bb
+
+    return result
+
+
+def _birth_date_to_age(birth_date: Any) -> Optional[int]:
+    """Convert a birth date string or epoch to age in years."""
+    try:
+        if isinstance(birth_date, str):
+            bd = datetime.strptime(birth_date, "%Y-%m-%d").date()
+        elif isinstance(birth_date, (int, float)):
+            bd = datetime.fromtimestamp(birth_date / 1000.0).date()
+        else:
+            return None
+        today = date.today()
+        age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        return age if 10 <= age <= 120 else None
+    except (ValueError, TypeError, OSError):
+        return None
