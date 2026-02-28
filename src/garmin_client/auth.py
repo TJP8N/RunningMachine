@@ -26,8 +26,9 @@ def create_session(
 ) -> Garmin:
     """Authenticate with Garmin Connect and return a session.
 
-    Tries token-based resume first (fast, no network if tokens are fresh).
-    Falls back to email/password login if tokens are missing or expired.
+    Uses the garminconnect library's built-in token management:
+    pass *token_dir* as the tokenstore so it automatically tries
+    saved tokens first, then falls back to email/password.
     Saves tokens to *token_dir* on success.
 
     Parameters
@@ -48,35 +49,22 @@ def create_session(
         Authenticated session.
     """
     token_dir = Path(token_dir)
+    token_dir.mkdir(parents=True, exist_ok=True)
+    tokenstore = str(token_dir)
 
-    # Try token-based resume first
     try:
-        return resume_session(token_dir)
-    except GarminAuthError:
-        logger.debug("Token resume failed, falling back to email/password login.")
-
-    # Full login
-    try:
-        client = Garmin(email=email, password=password)
-        client.login()
-        token_dir.mkdir(parents=True, exist_ok=True)
-        client.garth.dump(str(token_dir))
+        client = Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
+        client.login(tokenstore=tokenstore)
+        # Save tokens for future sessions
+        client.garth.dump(tokenstore)
         logger.info("Logged in and saved tokens to %s", token_dir)
         return client
     except Exception as exc:
         _msg = str(exc).lower()
         if "mfa" in _msg or "verification" in _msg or "two-factor" in _msg:
-            if prompt_mfa is not None:
-                try:
-                    code = prompt_mfa()
-                    client = Garmin(email=email, password=password)
-                    client.login(mfa_code=code)
-                    token_dir.mkdir(parents=True, exist_ok=True)
-                    client.garth.dump(str(token_dir))
-                    return client
-                except Exception as mfa_exc:
-                    raise GarminAuthError(f"MFA login failed: {mfa_exc}") from mfa_exc
             raise GarminMFARequired(str(exc)) from exc
+        if "authentication" in _msg or "unauthorized" in _msg or "401" in _msg:
+            raise GarminAuthError(f"Login failed: {exc}") from exc
         raise GarminAuthError(f"Login failed: {exc}") from exc
 
 
@@ -89,11 +77,10 @@ def resume_session(token_dir: Path | str = _DEFAULT_TOKEN_DIR) -> Garmin:
     if not token_dir.exists():
         raise GarminAuthError(f"Token directory does not exist: {token_dir}")
 
+    tokenstore = str(token_dir)
     try:
         client = Garmin()
-        client.garth.load(str(token_dir))
-        client.display_name = client.garth.profile["displayName"]
-        client.full_name = client.garth.profile["userName"]
+        client.login(tokenstore=tokenstore)
         logger.debug("Resumed session from %s", token_dir)
         return client
     except Exception as exc:
