@@ -74,6 +74,30 @@ class HighestPriorityWins(ResolutionStrategy):
         else:
             winner = max(tier_recs, key=lambda r: r.confidence)
 
+        # If the winner doesn't specify a session type (e.g. SAFETY "caution"
+        # only adjusts volume/intensity), inherit the best session type from
+        # any tier.  A None session type means "I don't care about session
+        # type" — not "force EASY".
+        if winner.recommended_session_type is None:
+            all_with_session = [
+                r for r in recommendations if r.recommended_session_type is not None
+            ]
+            if all_with_session:
+                best_session_rec = max(all_with_session, key=lambda r: r.confidence)
+                winner = RuleRecommendation(
+                    rule_id=winner.rule_id,
+                    rule_version=winner.rule_version,
+                    priority=winner.priority,
+                    recommended_session_type=best_session_rec.recommended_session_type,
+                    intensity_modifier=winner.intensity_modifier,
+                    volume_modifier=winner.volume_modifier,
+                    target_duration_min=winner.target_duration_min,
+                    target_distance_km=winner.target_distance_km,
+                    veto=winner.veto,
+                    explanation=winner.explanation,
+                    confidence=winner.confidence,
+                )
+
         # Blend same-tier volume/distance info from other recs into the winner
         for rec in tier_recs:
             if rec is not winner:

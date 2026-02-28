@@ -127,12 +127,15 @@ def estimate_daily_loads(
     max_hr: int = 185,
     resting_hr: int = 50,
     sex: str = "M",
-    days: int = 28,
+    days: int = 42,
 ) -> tuple[float, ...]:
-    """Generate synthetic 28-day TRIMP loads from average weekly km.
+    """Generate synthetic daily TRIMP loads from average weekly km.
 
     Uses a realistic weekly pattern (rest day, easy days, 1-2 harder days,
     long run) and converts distance → duration → TRIMP.
+
+    Default is 42 days (6 weeks) so the EWMA chronic window (span=28)
+    has enough runway to converge and produce an optimal ACWR (~1.0).
     """
     # Rough pace: ~6:00/km for an intermediate runner
     pace_min_per_km = 6.0
@@ -154,8 +157,8 @@ def estimate_daily_loads(
             continue
         avg_hr = resting_hr + hr_fraction[day_idx] * (max_hr - resting_hr)
         trimp = calculate_trimp(duration, avg_hr, max_hr, resting_hr, sex)
-        # Add slight randomness (+-10%) for realism
-        jitter = 1.0 + random.uniform(-0.10, 0.10)
+        # Add slight randomness (+-5%) for realism without biasing ACWR
+        jitter = 1.0 + random.uniform(-0.05, 0.05)
         loads.append(round(trimp * jitter, 1))
 
     return tuple(loads)

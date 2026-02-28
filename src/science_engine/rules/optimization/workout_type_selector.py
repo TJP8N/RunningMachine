@@ -83,7 +83,8 @@ class WorkoutTypeSelectorRule(ScienceRule):
         quality_1, quality_2 = _QUALITY_SESSIONS[phase]
 
         if day_role == "rest_or_easy":
-            return SessionType.EASY if recovery else SessionType.REST
+            # Recovery weeks still get a rest day
+            return SessionType.REST
 
         if day_role == "quality_1":
             return SessionType.EASY if recovery else quality_1
@@ -92,15 +93,17 @@ class WorkoutTypeSelectorRule(ScienceRule):
             return SessionType.EASY if recovery else quality_2
 
         if day_role == "long_run":
-            if recovery:
-                return SessionType.EASY
             if phase == TrainingPhase.TAPER:
                 return SessionType.EASY
+            # Recovery weeks: reduced long run (volume handled by progressive_overload)
             return SessionType.LONG_RUN
 
         if day_role == "moderate":
+            if recovery:
+                return SessionType.EASY
             if phase == TrainingPhase.SPECIFIC:
-                return SessionType.MARATHON_PACE if not recovery else SessionType.EASY
+                return SessionType.MARATHON_PACE
+            # BASE/BUILD: moderate steady run (longer easy effort, pre-long-run)
             return SessionType.EASY
 
         return SessionType.EASY

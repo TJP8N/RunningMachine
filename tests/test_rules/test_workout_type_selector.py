@@ -65,12 +65,13 @@ class TestWorkoutTypeSelectorRule:
         # BUILD quality_1 = THRESHOLD
         assert rec.recommended_session_type == SessionType.THRESHOLD
 
-    def test_recovery_week_monday_is_easy_not_rest(self) -> None:
+    def test_recovery_week_monday_is_rest(self) -> None:
         # Week 4 is a recovery week in a 16-week plan
+        # Athletes still need a rest day even in recovery weeks
         state = self._make_state(week=4, day=1)
         rec = self.rule.evaluate(state)
         assert rec is not None
-        assert rec.recommended_session_type == SessionType.EASY
+        assert rec.recommended_session_type == SessionType.REST
 
     def test_week_has_variety(self) -> None:
         """Different days should produce different session types."""

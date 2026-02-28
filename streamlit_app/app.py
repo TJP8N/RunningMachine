@@ -394,6 +394,26 @@ if _GARMIN_AVAILABLE and st.session_state.get("garmin_client"):
         _garmin_label += " — metrics loaded"
     st.success(_garmin_label)
 
+
+def _ensure_garmin_metrics() -> dict | None:
+    """Auto-pull today's Garmin metrics if connected and not yet loaded."""
+    if not _GARMIN_AVAILABLE:
+        return st.session_state.get("garmin_metrics")
+    gc = st.session_state.get("garmin_client")
+    if gc is None:
+        return None
+    cached = st.session_state.get("garmin_metrics")
+    if cached is not None:
+        return cached
+    try:
+        raw = gc.pull_daily_metrics(date.today())
+        mapped = map_daily_metrics(raw)
+        st.session_state["garmin_metrics"] = mapped
+        return mapped
+    except Exception:
+        return None
+
+
 tab_today, tab_week, tab_trace = st.tabs(
     ["Today's Workout", "Weekly Plan", "Decision Trace"]
 )
@@ -408,7 +428,7 @@ with tab_today:
     if st.button("Generate Today's Workout", type="primary"):
         profile = _collect_profile_from_sidebar()
         try:
-            garmin_m = st.session_state.get("garmin_metrics")
+            garmin_m = _ensure_garmin_metrics()
             if garmin_m:
                 state = build_athlete_state_with_garmin(profile, garmin_m)
             else:
@@ -474,7 +494,7 @@ with tab_week:
     if st.button("Generate Weekly Plan", type="primary"):
         profile = _collect_profile_from_sidebar()
         try:
-            garmin_m = st.session_state.get("garmin_metrics")
+            garmin_m = _ensure_garmin_metrics()
             if garmin_m:
                 state = build_athlete_state_with_garmin(profile, garmin_m)
             else:
