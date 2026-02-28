@@ -20,10 +20,19 @@ dev = [
 ui = [
     "streamlit>=1.28",
 ]
+garmin = [
+    "garminconnect>=0.2.15",
+]
+scheduler = [
+    "apscheduler>=3.10",
+]
+all = [
+    "ai-endurance-science-engine[ui,garmin,scheduler]",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]

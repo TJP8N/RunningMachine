@@ -11,9 +11,10 @@ RUN apt-get update && \
 COPY pyproject.toml ./
 COPY src/ src/
 COPY streamlit_app/ streamlit_app/
+COPY scheduler/ scheduler/
 
-# Install the project with UI deps
-RUN pip install --no-cache-dir -e ".[ui]"
+# Install the project with all deps
+RUN pip install --no-cache-dir -e ".[ui,garmin,scheduler]"
 
 # Streamlit config: disable telemetry, set headless mode
 RUN mkdir -p /root/.streamlit && \

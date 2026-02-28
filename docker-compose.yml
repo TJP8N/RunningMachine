@@ -6,7 +6,21 @@ services:
       - "8501:8501"
     volumes:
       - profiles:/app/streamlit_app/profiles
+      - garmin_tokens:/root/.garminconnect
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    container_name: ai-endurance-scheduler
+    command: ["python", "-m", "scheduler.nightly", "--daemon"]
+    volumes:
+      - profiles:/app/streamlit_app/profiles
+      - garmin_tokens:/root/.garminconnect
+    environment:
+      - GARMIN_EMAIL=${GARMIN_EMAIL}
+      - GARMIN_PASSWORD=${GARMIN_PASSWORD}
     restart: unless-stopped
 
 volumes:
   profiles:
+  garmin_tokens:

@@ -17,7 +17,7 @@ import streamlit as st
 from science_engine.engine import ScienceEngine
 from science_engine.models.decision_trace import RuleStatus
 from science_engine.models.enums import DurationType, SessionType, StepType
-from science_engine.serialization import to_garmin_json_string
+from science_engine.serialization import to_garmin_json, to_garmin_json_string
 
 from helpers import (
     DAY_NAMES,
@@ -26,6 +26,7 @@ from helpers import (
     STEP_COLORS,
     STEP_LABELS,
     build_athlete_state,
+    build_athlete_state_with_garmin,
     format_duration,
     format_hr_range,
     format_pace_range,
@@ -33,6 +34,14 @@ from helpers import (
     load_profile,
     save_profile,
 )
+
+# Conditional Garmin imports — only available when garminconnect is installed
+try:
+    from garmin_client import GarminClient, GarminAuthError, map_daily_metrics
+
+    _GARMIN_AVAILABLE = True
+except ImportError:
+    _GARMIN_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -274,6 +283,51 @@ with st.sidebar.expander("Load / Save Profile"):
         st.success(f"Saved as '{save_name}'")
 
 
+# --- Garmin Connect integration ---
+if _GARMIN_AVAILABLE:
+    with st.sidebar.expander("Garmin Connect"):
+        if st.session_state.get("garmin_client") is not None:
+            st.success("Connected to Garmin")
+            if st.button("Disconnect"):
+                st.session_state.pop("garmin_client", None)
+                st.session_state.pop("garmin_metrics", None)
+                st.rerun()
+
+            if st.button("Pull Today's Metrics"):
+                try:
+                    gc = st.session_state["garmin_client"]
+                    raw = gc.pull_daily_metrics(date.today())
+                    mapped = map_daily_metrics(raw)
+                    st.session_state["garmin_metrics"] = mapped
+                    st.success("Metrics pulled successfully")
+                    # Show pulled values
+                    for k, v in mapped.items():
+                        if v is not None:
+                            st.caption(f"{k}: {v}")
+                except Exception as e:
+                    st.error(f"Failed to pull metrics: {e}")
+        else:
+            garmin_email = st.text_input("Email", key="garmin_email")
+            garmin_password = st.text_input(
+                "Password", type="password", key="garmin_password"
+            )
+            if st.button("Connect"):
+                if not garmin_email or not garmin_password:
+                    st.warning("Enter email and password")
+                else:
+                    try:
+                        gc = GarminClient(
+                            email=garmin_email, password=garmin_password
+                        )
+                        st.session_state["garmin_client"] = gc
+                        st.success("Connected!")
+                        st.rerun()
+                    except GarminAuthError as e:
+                        st.error(f"Auth failed: {e}")
+                    except Exception as e:
+                        st.error(f"Connection error: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Main content — 3 tabs
 # ---------------------------------------------------------------------------
@@ -295,7 +349,11 @@ with tab_today:
     if st.button("Generate Today's Workout", type="primary"):
         profile = _collect_profile_from_sidebar()
         try:
-            state = build_athlete_state(profile)
+            garmin_m = st.session_state.get("garmin_metrics")
+            if garmin_m:
+                state = build_athlete_state_with_garmin(profile, garmin_m)
+            else:
+                state = build_athlete_state(profile)
             workout, trace = engine.prescribe_structured(state)
             st.session_state["last_workout"] = workout
             st.session_state["last_trace"] = trace
@@ -328,12 +386,24 @@ with tab_today:
             st.info(workout.decision_summary)
 
         st.divider()
-        st.download_button(
-            "Download Garmin Workout (.json)",
-            data=to_garmin_json_string(workout),
-            file_name=f"{workout.workout_title[:32].replace(' ', '_')}.json",
-            mime="application/json",
-        )
+        dl_col, push_col = st.columns(2)
+        with dl_col:
+            st.download_button(
+                "Download Garmin Workout (.json)",
+                data=to_garmin_json_string(workout),
+                file_name=f"{workout.workout_title[:32].replace(' ', '_')}.json",
+                mime="application/json",
+            )
+        with push_col:
+            if _GARMIN_AVAILABLE and st.session_state.get("garmin_client"):
+                if st.button("Push to Garmin", key="push_today"):
+                    try:
+                        gc = st.session_state["garmin_client"]
+                        wj = to_garmin_json(workout)
+                        wid = gc.upload_and_schedule(wj, date.today())
+                        st.success(f"Pushed to Garmin (workout #{wid})")
+                    except Exception as e:
+                        st.error(f"Push failed: {e}")
     else:
         st.info("Click **Generate Today's Workout** to get started.")
 
@@ -345,7 +415,11 @@ with tab_week:
     if st.button("Generate Weekly Plan", type="primary"):
         profile = _collect_profile_from_sidebar()
         try:
-            state = build_athlete_state(profile)
+            garmin_m = st.session_state.get("garmin_metrics")
+            if garmin_m:
+                state = build_athlete_state_with_garmin(profile, garmin_m)
+            else:
+                state = build_athlete_state(profile)
             workouts, plan = engine.prescribe_week_structured(state)
             st.session_state["last_week_workouts"] = workouts
             st.session_state["last_week_plan"] = plan
@@ -366,18 +440,45 @@ with tab_week:
         if plan.is_recovery_week:
             st.warning("Recovery week — reduced volume and intensity")
 
-        # Weekly zip download
+        # Weekly zip download + push
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for j, wo in enumerate(week_workouts):
                 fname = f"{DAY_NAMES[j]}_{wo.workout_title[:24].replace(' ', '_')}.json"
                 zf.writestr(fname, to_garmin_json_string(wo))
-        st.download_button(
-            "Download Weekly Plan (.zip)",
-            data=zip_buf.getvalue(),
-            file_name=f"week_{plan.week_number}_plan.zip",
-            mime="application/zip",
-        )
+
+        wk_dl_col, wk_push_col = st.columns(2)
+        with wk_dl_col:
+            st.download_button(
+                "Download Weekly Plan (.zip)",
+                data=zip_buf.getvalue(),
+                file_name=f"week_{plan.week_number}_plan.zip",
+                mime="application/zip",
+            )
+        with wk_push_col:
+            if _GARMIN_AVAILABLE and st.session_state.get("garmin_client"):
+                from datetime import timedelta
+
+                # Default to next Monday
+                today = date.today()
+                days_until_monday = (7 - today.weekday()) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                default_start = today + timedelta(days=days_until_monday)
+
+                week_start = st.date_input(
+                    "Week start date", value=default_start, key="week_push_date"
+                )
+                if st.button("Push Week to Garmin", key="push_week"):
+                    try:
+                        gc = st.session_state["garmin_client"]
+                        jsons = [to_garmin_json(wo) for wo in week_workouts]
+                        ids = gc.upload_week(jsons, week_start)
+                        st.success(
+                            f"Pushed {len(ids)} workouts to Garmin (IDs: {ids})"
+                        )
+                    except Exception as e:
+                        st.error(f"Push failed: {e}")
 
         # 7-column day grid
         st.subheader("Week at a Glance")

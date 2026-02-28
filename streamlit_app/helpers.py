@@ -17,6 +17,7 @@ from science_engine.math.periodization import allocate_phases, get_phase_for_wee
 from science_engine.math.training_load import calculate_trimp
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import (
+    ReadinessLevel,
     SessionType,
     StepType,
     TrainingPhase,
@@ -253,6 +254,36 @@ def build_athlete_state(profile: dict) -> AthleteState:
         d_prime_meters=dp,
         temperature_celsius=opt("temperature"),
     )
+
+
+def build_athlete_state_with_garmin(
+    profile: dict, garmin_metrics: dict,
+) -> AthleteState:
+    """Build AthleteState from UI profile, overlaying real Garmin metrics.
+
+    Non-None values in *garmin_metrics* override the corresponding fields
+    in the base state built from the profile dict.
+    """
+    import dataclasses
+
+    base = build_athlete_state(profile)
+
+    # Map garmin_metrics keys to AthleteState field names (1:1 match)
+    overrides: dict = {}
+    for key in ("hrv_rmssd", "hrv_baseline", "sleep_score", "body_battery",
+                "resting_hr", "vo2max"):
+        val = garmin_metrics.get(key)
+        if val is not None:
+            overrides[key] = val
+
+    # Readiness — map to the readiness field
+    readiness = garmin_metrics.get("readiness")
+    if readiness is not None and isinstance(readiness, ReadinessLevel):
+        overrides["readiness"] = readiness
+
+    if overrides:
+        return dataclasses.replace(base, **overrides)
+    return base
 
 
 # ---------------------------------------------------------------------------
