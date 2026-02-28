@@ -150,19 +150,20 @@ def _pull_garmin_profile(gc: "GarminClient") -> None:
         return
     try:
         raw = gc.pull_profile()
+        st.session_state["garmin_raw_profile"] = raw  # for debug view
         mapped = map_profile(raw)
         if mapped:
             existing = st.session_state.get("profile_data", {})
-            # Garmin values fill in, but don't overwrite user edits
-            merged = {**mapped, **existing}
+            # Garmin values override defaults/previous values
+            merged = {**existing, **mapped}
             st.session_state["profile_data"] = merged
             st.session_state["garmin_profile_fields"] = set(mapped.keys())
         # Also extract daily metrics from the same pull
         daily = map_daily_metrics(raw)
         if any(v is not None for v in daily.values()):
             st.session_state["garmin_metrics"] = daily
-    except Exception:
-        pass  # Non-critical — user can still fill manually
+    except Exception as e:
+        st.session_state["garmin_pull_error"] = str(e)
 
 
 def _get_pdata(key: str, default):
@@ -358,12 +359,30 @@ with st.sidebar.expander("Garmin Connect"):
                 mapped = map_daily_metrics(raw)
                 st.session_state["garmin_metrics"] = mapped
                 st.success("Metrics pulled successfully")
-                # Show pulled values
                 for k, v in mapped.items():
                     if v is not None:
                         st.caption(f"{k}: {v}")
             except Exception as e:
                 st.error(f"Failed to pull metrics: {e}")
+
+        # Debug: show raw Garmin data for troubleshooting
+        import json as _json
+
+        raw_profile = st.session_state.get("garmin_raw_profile")
+        if raw_profile and st.checkbox("Show raw Garmin data", value=False):
+            for section, data in raw_profile.items():
+                with st.expander(f"raw: {section}"):
+                    if data is None:
+                        st.caption("(no data)")
+                    elif isinstance(data, (list, dict)):
+                        # Truncate large lists
+                        display = data
+                        if isinstance(data, list) and len(data) > 5:
+                            display = data[:5]
+                            st.caption(f"Showing 5 of {len(data)} items")
+                        st.code(_json.dumps(display, indent=2, default=str)[:3000])
+                    else:
+                        st.code(str(data)[:1000])
     elif st.session_state.get("garmin_mfa_pending"):
         # MFA step: initial login detected MFA, now need the verification code
         st.info("Garmin sent a verification code to your email. Enter it below.")

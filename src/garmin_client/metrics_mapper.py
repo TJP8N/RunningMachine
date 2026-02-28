@@ -210,6 +210,24 @@ def _extract_readiness(data: Any) -> Optional[ReadinessLevel]:
 # ---------------------------------------------------------------------------
 
 
+def _deep_get(data: Any, *keys: Any) -> Any:
+    """Traverse nested dicts/lists by key path, returning None on failure."""
+    current = data
+    for key in keys:
+        if current is None:
+            return None
+        if isinstance(key, int) and isinstance(current, (list, tuple)):
+            if 0 <= key < len(current):
+                current = current[key]
+            else:
+                return None
+        elif isinstance(current, dict):
+            current = current.get(key)
+        else:
+            return None
+    return current
+
+
 def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     """Map a full pull_profile() result to sidebar-compatible field dict.
 
@@ -222,9 +240,14 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     # --- User profile: name, age, sex ---
     profile = raw.get("user_profile")
     if isinstance(profile, dict):
-        display = profile.get("displayName") or profile.get("userName")
-        if display:
-            result["name"] = str(display)
+        # Prefer real name over displayName (which is often a username)
+        first = profile.get("firstName") or ""
+        last = profile.get("lastName") or ""
+        full_name = f"{first} {last}".strip()
+        if not full_name:
+            full_name = profile.get("displayName") or profile.get("userName") or ""
+        if full_name:
+            result["name"] = str(full_name)
 
         # Age from birth date
         birth = profile.get("birthDate")
@@ -238,25 +261,41 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
         if gender:
             result["sex"] = "F" if str(gender).upper() in ("FEMALE", "F") else "M"
 
-    # --- User settings: weight, height ---
+    # Also check user_settings for demographics
     settings = raw.get("user_settings")
     if isinstance(settings, dict):
-        # Weight is in grams in userData
         user_data = settings.get("userData") or settings
-        weight_g = user_data.get("weight")
-        if weight_g is not None:
+
+        # Age from settings if not found in profile
+        if "age" not in result:
+            birth = user_data.get("birthDate")
+            if birth:
+                age = _birth_date_to_age(birth)
+                if age:
+                    result["age"] = age
+
+        # Weight — Garmin stores in grams; detect by magnitude
+        weight_raw = user_data.get("weight")
+        if weight_raw is not None:
             try:
-                result["weight_kg"] = round(float(weight_g) / 1000.0, 1)
+                w = float(weight_raw)
+                # > 500 means grams, otherwise already kg
+                result["weight_kg"] = round(w / 1000.0, 1) if w > 500 else round(w, 1)
             except (ValueError, TypeError):
                 pass
 
     # --- Body composition: weight fallback ---
     body_comp = raw.get("body_composition")
     if isinstance(body_comp, dict) and "weight_kg" not in result:
-        weight = body_comp.get("weight")
-        if weight is not None:
+        # Try several common paths
+        weight_raw = (
+            body_comp.get("weight")
+            or _deep_get(body_comp, "totalAverage", "weight")
+        )
+        if weight_raw is not None:
             try:
-                result["weight_kg"] = round(float(weight) / 1000.0, 1)
+                w = float(weight_raw)
+                result["weight_kg"] = round(w / 1000.0, 1) if w > 500 else round(w, 1)
             except (ValueError, TypeError):
                 pass
 
@@ -268,8 +307,13 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     # --- Resting HR ---
     rhr_data = raw.get("resting_hr")
     if isinstance(rhr_data, dict):
-        for key in ("restingHeartRate", "rhr"):
-            val = rhr_data.get(key)
+        # Try multiple common field paths
+        for path in [
+            ("restingHeartRate",),
+            ("rhr",),
+            ("allMetrics", "metricsMap", "WELLNESS_RESTING_HEART_RATE", 0, "value"),
+        ]:
+            val = _deep_get(rhr_data, *path)
             if val is not None:
                 try:
                     result["resting_hr"] = int(val)
@@ -288,19 +332,34 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     # --- Lactate threshold: LTHR bpm + pace ---
     lt = raw.get("lactate_threshold")
     if isinstance(lt, dict):
-        lt_hr = lt.get("heartRateThreshold")
+        # Try direct fields and nested allMetrics paths
+        lt_hr = (
+            lt.get("heartRateThreshold")
+            or _deep_get(lt, "allMetrics", "metricsMap", "HEART_RATE", 0, "value")
+        )
         if lt_hr is not None:
             try:
                 result["lthr_bpm"] = int(lt_hr)
             except (ValueError, TypeError):
                 pass
-        # Speed in m/s → pace in s/km → min:sec
-        lt_speed = lt.get("runningLactateThresholdSpeed")
+
+        # Speed: could be m/s directly, or in a nested metrics map
+        lt_speed = (
+            lt.get("runningLactateThresholdSpeed")
+            or _deep_get(lt, "allMetrics", "metricsMap", "SPEED", 0, "value")
+        )
         if lt_speed is not None:
             try:
-                speed_ms = float(lt_speed) / 100.0  # cm/s → m/s
-                if speed_ms > 0:
-                    pace_s_per_km = 1000.0 / speed_ms
+                speed = float(lt_speed)
+                # Garmin returns speed in m/s; if value is very large (>100)
+                # it might be in mm/s or cm/s
+                if speed > 100:
+                    speed = speed / 1000.0  # mm/s → m/s
+                elif speed > 20:
+                    speed = speed / 100.0  # cm/s → m/s
+                # Now speed is in m/s
+                if speed > 0:
+                    pace_s_per_km = 1000.0 / speed
                     result["lthr_pace_min"] = int(pace_s_per_km // 60)
                     result["lthr_pace_sec"] = int(pace_s_per_km % 60)
             except (ValueError, TypeError, ZeroDivisionError):
@@ -310,17 +369,20 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     activities = raw.get("recent_activities")
     if isinstance(activities, list) and len(activities) > 0:
         total_km = 0.0
+        num_weeks = 6.0  # 6-week window
         for act in activities:
-            if isinstance(act, dict):
-                dist = act.get("distance")
-                if dist is not None:
-                    try:
-                        total_km += float(dist) / 1000.0  # meters → km
-                    except (ValueError, TypeError):
-                        pass
-        # 6 weeks of data → avg per week
+            if not isinstance(act, dict):
+                continue
+            dist = act.get("distance")
+            if dist is not None:
+                try:
+                    d = float(dist)
+                    # Garmin returns meters; if suspiciously small, might be km
+                    total_km += d / 1000.0 if d > 500 else d
+                except (ValueError, TypeError):
+                    pass
         if total_km > 0:
-            result["avg_weekly_km"] = round(total_km / 6.0, 1)
+            result["avg_weekly_km"] = round(total_km / num_weeks, 1)
 
     # --- Readiness metrics (daily) ---
     rmssd, baseline = _extract_hrv(raw.get("hrv"))
