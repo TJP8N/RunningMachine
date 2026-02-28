@@ -282,15 +282,8 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
         if rhr_from_stats is not None:
             result["resting_hr"] = rhr_from_stats
 
-    # --- Max HR from stats ---
-    stats = raw.get("stats")
-    if isinstance(stats, dict):
-        max_hr = stats.get("maxHeartRate")
-        if max_hr is not None:
-            try:
-                result["max_hr"] = int(max_hr)
-            except (ValueError, TypeError):
-                pass
+    # Note: stats.maxHeartRate is the highest HR recorded TODAY (not
+    # physiological max HR), so we don't use it for the max_hr profile field.
 
     # --- Lactate threshold: LTHR bpm + pace ---
     lt = raw.get("lactate_threshold")
@@ -343,6 +336,31 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     bb = _extract_body_battery(raw.get("body_battery"))
     if bb is not None:
         result["body_battery"] = bb
+
+    # Sanitize: drop values outside sidebar widget bounds to prevent crashes
+    _BOUNDS: dict[str, tuple[float, float]] = {
+        "age": (16, 99),
+        "weight_kg": (30.0, 200.0),
+        "max_hr": (120, 230),
+        "resting_hr": (30, 100),
+        "lthr_bpm": (100, 220),
+        "lthr_pace_min": (2, 12),
+        "lthr_pace_sec": (0, 59),
+        "vo2max": (20.0, 90.0),
+        "avg_weekly_km": (5.0, 250.0),
+        "hrv_rmssd": (0.0, 200.0),
+        "hrv_baseline": (0.0, 200.0),
+        "sleep_score": (0.0, 100.0),
+        "body_battery": (0, 100),
+    }
+    for key, (lo, hi) in _BOUNDS.items():
+        if key in result:
+            try:
+                val = float(result[key])
+                if val < lo or val > hi:
+                    del result[key]
+            except (ValueError, TypeError):
+                del result[key]
 
     return result
 
