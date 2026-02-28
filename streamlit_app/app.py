@@ -187,19 +187,26 @@ _FIELD_TYPES: dict[str, type] = {
 
 
 def _push_to_widgets(values: dict) -> None:
-    """Push mapped values directly into widget session_state keys.
+    """Queue widget updates to be applied BEFORE widgets render on next rerun.
 
-    This ensures widgets update on the next rerun, overriding their
-    cached internal state.
+    Streamlit syncs widget values from the frontend into session_state at the
+    START of each script run, overwriting any programmatic changes we make
+    after widgets have already rendered.  To defeat this, we store the new
+    values in a non-widget session_state key ('_pending_widget_update') and
+    apply them at the top of the script — after Streamlit's sync but before
+    our widgets render.
     """
+    pending: dict[str, object] = {}
     for field, val in values.items():
         wkey = _FIELD_TO_WIDGET_KEY.get(field)
         if wkey is not None and val is not None:
             converter = _FIELD_TYPES.get(field, type(val))
             try:
-                st.session_state[wkey] = converter(val)
+                pending[wkey] = converter(val)
             except (ValueError, TypeError):
                 pass
+    if pending:
+        st.session_state["_pending_widget_update"] = pending
 
 
 def _pull_garmin_profile(gc: "GarminClient") -> None:
@@ -235,6 +242,16 @@ def _get_pdata(key: str, default):
 # ---------------------------------------------------------------------------
 
 st.sidebar.title("Athlete Profile")
+
+# --- Apply pending widget updates (from Garmin pull or profile load) ---
+# This MUST run before widgets render. Streamlit overwrites widget keys in
+# session_state with their frontend values at the start of each rerun.
+# By applying our pending updates here (after that sync, before widgets),
+# we ensure the widgets pick up the new values.
+_pending = st.session_state.pop("_pending_widget_update", None)
+if _pending:
+    for _wk, _val in _pending.items():
+        st.session_state[_wk] = _val
 
 # --- Initialize widget defaults (first render only) ---
 _WIDGET_DEFAULTS: dict[str, tuple[str, object]] = {
