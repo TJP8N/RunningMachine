@@ -284,48 +284,56 @@ with st.sidebar.expander("Load / Save Profile"):
 
 
 # --- Garmin Connect integration ---
-if _GARMIN_AVAILABLE:
-    with st.sidebar.expander("Garmin Connect"):
-        if st.session_state.get("garmin_client") is not None:
-            st.success("Connected to Garmin")
-            if st.button("Disconnect"):
-                st.session_state.pop("garmin_client", None)
-                st.session_state.pop("garmin_metrics", None)
-                st.rerun()
+with st.sidebar.expander("Garmin Connect"):
+    if not _GARMIN_AVAILABLE:
+        st.info(
+            "Garmin integration is available but not installed. "
+            "Run `pip install -e \".[garmin]\"` to enable it."
+        )
+    elif st.session_state.get("garmin_client") is not None:
+        st.success("Connected to Garmin")
+        if st.button("Disconnect"):
+            st.session_state.pop("garmin_client", None)
+            st.session_state.pop("garmin_metrics", None)
+            st.rerun()
 
-            if st.button("Pull Today's Metrics"):
+        if st.button("Pull Today's Metrics"):
+            try:
+                gc = st.session_state["garmin_client"]
+                raw = gc.pull_daily_metrics(date.today())
+                mapped = map_daily_metrics(raw)
+                st.session_state["garmin_metrics"] = mapped
+                st.success("Metrics pulled successfully")
+                # Show pulled values
+                for k, v in mapped.items():
+                    if v is not None:
+                        st.caption(f"{k}: {v}")
+            except Exception as e:
+                st.error(f"Failed to pull metrics: {e}")
+    else:
+        st.caption(
+            "Connect your Garmin account to pull real metrics "
+            "(HRV, sleep, body battery) and push workouts directly."
+        )
+        garmin_email = st.text_input("Email", key="garmin_email")
+        garmin_password = st.text_input(
+            "Password", type="password", key="garmin_password"
+        )
+        if st.button("Connect"):
+            if not garmin_email or not garmin_password:
+                st.warning("Enter email and password")
+            else:
                 try:
-                    gc = st.session_state["garmin_client"]
-                    raw = gc.pull_daily_metrics(date.today())
-                    mapped = map_daily_metrics(raw)
-                    st.session_state["garmin_metrics"] = mapped
-                    st.success("Metrics pulled successfully")
-                    # Show pulled values
-                    for k, v in mapped.items():
-                        if v is not None:
-                            st.caption(f"{k}: {v}")
+                    gc = GarminClient(
+                        email=garmin_email, password=garmin_password
+                    )
+                    st.session_state["garmin_client"] = gc
+                    st.success("Connected!")
+                    st.rerun()
+                except GarminAuthError as e:
+                    st.error(f"Auth failed: {e}")
                 except Exception as e:
-                    st.error(f"Failed to pull metrics: {e}")
-        else:
-            garmin_email = st.text_input("Email", key="garmin_email")
-            garmin_password = st.text_input(
-                "Password", type="password", key="garmin_password"
-            )
-            if st.button("Connect"):
-                if not garmin_email or not garmin_password:
-                    st.warning("Enter email and password")
-                else:
-                    try:
-                        gc = GarminClient(
-                            email=garmin_email, password=garmin_password
-                        )
-                        st.session_state["garmin_client"] = gc
-                        st.success("Connected!")
-                        st.rerun()
-                    except GarminAuthError as e:
-                        st.error(f"Auth failed: {e}")
-                    except Exception as e:
-                        st.error(f"Connection error: {e}")
+                    st.error(f"Connection error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +342,13 @@ if _GARMIN_AVAILABLE:
 
 st.title("AI Endurance Beater")
 st.caption("Science-driven marathon training — powered by deterministic rules")
+
+# Garmin connection status banner
+if _GARMIN_AVAILABLE and st.session_state.get("garmin_client"):
+    _garmin_label = "Garmin Connected"
+    if st.session_state.get("garmin_metrics"):
+        _garmin_label += " — metrics loaded"
+    st.success(_garmin_label)
 
 tab_today, tab_week, tab_trace = st.tabs(
     ["Today's Workout", "Weekly Plan", "Decision Trace"]
