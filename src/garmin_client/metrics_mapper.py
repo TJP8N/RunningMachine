@@ -356,6 +356,17 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     if vo2 is not None:
         result["vo2max"] = vo2
 
+    # VO2max fallback: check user_settings.userData.vo2MaxRunning
+    if "vo2max" not in result:
+        if isinstance(settings, dict):
+            user_data_for_vo2 = (settings.get("userData") or settings)
+            vo2_setting = user_data_for_vo2.get("vo2MaxRunning")
+            if vo2_setting is not None:
+                try:
+                    result["vo2max"] = float(vo2_setting)
+                except (ValueError, TypeError):
+                    pass
+
     # --- Max HR ---
     # Strategy 1: observed max from all recent activities
     all_acts = raw.get("all_activities")
@@ -464,6 +475,30 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
     if bb is not None:
         result["body_battery"] = bb
 
+    # --- VO2max estimation from HR data (Uth et al., 2004) ---
+    # VO2max ≈ 15.3 × (maxHR / restingHR)
+    if "vo2max" not in result and "max_hr" in result and "resting_hr" in result:
+        try:
+            hr_ratio = float(result["max_hr"]) / float(result["resting_hr"])
+            estimated_vo2 = round(15.3 * hr_ratio, 1)
+            if 20.0 <= estimated_vo2 <= 90.0:
+                result["vo2max"] = estimated_vo2
+        except (ZeroDivisionError, ValueError, TypeError):
+            pass
+
+    # --- Critical speed: estimate from LT speed ---
+    # CS is typically ~95% of lactate threshold speed for trained runners.
+    if "lthr_pace_min" in result and "lthr_pace_sec" in result:
+        lt_pace_s = result["lthr_pace_min"] * 60 + result["lthr_pace_sec"]
+        if lt_pace_s > 0:
+            lt_speed_ms = 1000.0 / lt_pace_s
+            # CS ≈ 95% of LT speed
+            cs = round(lt_speed_ms * 0.95, 2)
+            if 1.5 <= cs <= 7.0:
+                result["critical_speed"] = cs
+                # D' rough estimate: 200-400m for most runners, scale with speed
+                result["d_prime"] = round(cs * 60, 0)  # ~200-400m range
+
     # Sanitize: drop values outside sidebar widget bounds to prevent crashes
     _BOUNDS: dict[str, tuple[float, float]] = {
         "age": (16, 99),
@@ -479,6 +514,8 @@ def map_profile(raw: dict[str, Any]) -> dict[str, Any]:
         "hrv_baseline": (0.0, 200.0),
         "sleep_score": (0.0, 100.0),
         "body_battery": (0, 100),
+        "critical_speed": (0.0, 8.0),
+        "d_prime": (0.0, 1000.0),
     }
     for key, (lo, hi) in _BOUNDS.items():
         if key in result:
