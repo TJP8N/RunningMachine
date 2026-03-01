@@ -139,3 +139,64 @@ class TestMarathonPace:
         # LTHR pace 300 / 0.88 ≈ 341 s/km ± 3%
         assert targets.pace_target_low is not None
         assert 320 < targets.pace_target_low < 360
+
+
+class TestHeatAdjustedTargets:
+    """Tests for heat-adjusted pace targets."""
+
+    def test_hot_weather_slows_pace(self) -> None:
+        """30°C athlete gets slower pace targets than 15°C athlete."""
+        cool = _make_athlete(temperature_celsius=15.0)
+        hot = _make_athlete(temperature_celsius=30.0)
+        t_cool = assign_targets(cool, ZoneType.ZONE_2)
+        t_hot = assign_targets(hot, ZoneType.ZONE_2)
+        # Slower = higher s/km
+        assert t_hot.pace_target_low > t_cool.pace_target_low
+        assert t_hot.pace_target_high > t_cool.pace_target_high
+
+    def test_no_adjustment_when_temp_none(self) -> None:
+        """Targets unchanged when temperature is None."""
+        no_temp = _make_athlete(temperature_celsius=None)
+        cool = _make_athlete(temperature_celsius=10.0)
+        t_none = assign_targets(no_temp, ZoneType.ZONE_2)
+        t_cool = assign_targets(cool, ZoneType.ZONE_2)
+        assert t_none.pace_target_low == t_cool.pace_target_low
+
+    def test_heat_stacks_with_intensity_modifier(self) -> None:
+        """B_MODERATE + 30°C → both effects applied (slower than either alone)."""
+        state_hot = _make_athlete(temperature_celsius=30.0)
+        state_cool = _make_athlete(temperature_celsius=None)
+        # Hot + full intensity
+        t_hot_full = assign_targets(state_hot, ZoneType.ZONE_3, IntensityLevel.A_FULL)
+        # Cool + moderate intensity
+        t_cool_mod = assign_targets(state_cool, ZoneType.ZONE_3, IntensityLevel.B_MODERATE)
+        # Hot + moderate intensity (both effects stacked)
+        t_hot_mod = assign_targets(state_hot, ZoneType.ZONE_3, IntensityLevel.B_MODERATE)
+        # Stacked should be slower than either effect alone
+        assert t_hot_mod.pace_target_low > t_hot_full.pace_target_low
+        assert t_hot_mod.pace_target_low > t_cool_mod.pace_target_low
+
+    def test_hr_targets_unchanged_in_heat(self) -> None:
+        """HR targets are identical regardless of temperature."""
+        cool = _make_athlete(temperature_celsius=None)
+        hot = _make_athlete(temperature_celsius=35.0)
+        t_cool = assign_targets(cool, ZoneType.ZONE_3)
+        t_hot = assign_targets(hot, ZoneType.ZONE_3)
+        assert t_cool.hr_target_low == t_hot.hr_target_low
+        assert t_cool.hr_target_high == t_hot.hr_target_high
+
+    def test_humidity_increases_pace_adjustment(self) -> None:
+        """High humidity makes pace targets even slower."""
+        hot = _make_athlete(temperature_celsius=30.0)
+        hot_humid = _make_athlete(temperature_celsius=30.0, humidity_pct=80.0)
+        t_hot = assign_targets(hot, ZoneType.ZONE_2)
+        t_humid = assign_targets(hot_humid, ZoneType.ZONE_2)
+        assert t_humid.pace_target_low > t_hot.pace_target_low
+
+    def test_marathon_pace_adjusted_in_heat(self) -> None:
+        """Marathon pace session also gets heat adjustment."""
+        cool = _make_athlete(temperature_celsius=None)
+        hot = _make_athlete(temperature_celsius=30.0)
+        t_cool = assign_targets(cool, ZoneType.ZONE_3, session_type=SessionType.MARATHON_PACE)
+        t_hot = assign_targets(hot, ZoneType.ZONE_3, session_type=SessionType.MARATHON_PACE)
+        assert t_hot.pace_target_low > t_cool.pace_target_low

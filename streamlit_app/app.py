@@ -155,7 +155,7 @@ _WIDGET_KEYS = [
     "w_plan_weeks", "w_cur_week", "w_dow",
     "w_weekly_km",
     "w_hrv_rmssd", "w_hrv_base", "w_sleep", "w_bb",
-    "w_cs", "w_dp", "w_temp",
+    "w_cs", "w_dp", "w_temp", "w_humidity",
 ]
 
 
@@ -168,6 +168,11 @@ def _nuke_widget_keys() -> None:
     """
     for k in _WIDGET_KEYS:
         st.session_state.pop(k, None)
+    # Also nuke race calendar state so it re-seeds from profile_data
+    st.session_state.pop("race_events", None)
+    for k in list(st.session_state.keys()):
+        if k.startswith("race_") and k.split("_")[1].isdigit():
+            st.session_state.pop(k)
 
 
 def _pull_garmin_profile(gc: "GarminClient") -> None:
@@ -234,6 +239,7 @@ _WIDGET_DEFAULTS: list[tuple[str, str, type, object]] = [
     ("w_cs", "critical_speed", float, 0.0),
     ("w_dp", "d_prime", float, 0.0),
     ("w_temp", "temperature", float, 0.0),
+    ("w_humidity", "humidity_pct", float, 0.0),
 ]
 for _wkey, _pkey, _cast, _default in _WIDGET_DEFAULTS:
     if _wkey not in st.session_state:
@@ -242,6 +248,18 @@ for _wkey, _pkey, _cast, _default in _WIDGET_DEFAULTS:
             st.session_state[_wkey] = _cast(_val)
         except (ValueError, TypeError):
             st.session_state[_wkey] = _cast(_default)
+
+# Seed race events from profile data
+if "race_events" not in st.session_state:
+    _raw_events = _get_pdata("race_events", [])
+    _seeded: list[dict] = []
+    for _ev in _raw_events:
+        _ev = dict(_ev)
+        _d = _ev.get("date")
+        if isinstance(_d, str):
+            _ev["date"] = date.fromisoformat(_d)
+        _seeded.append(_ev)
+    st.session_state["race_events"] = _seeded
 
 # --- Demographics ---
 with st.sidebar.expander("Demographics", expanded=True):
@@ -271,7 +289,66 @@ with st.sidebar.expander("Training Plan", expanded=True):
     day_of_week = st.number_input(
         "Day of week (1=Mon, 7=Sun)", 1, 7, key="w_dow",
     )
-    goal_race_date = st.date_input("Goal race date (optional)", value=None)
+    # --- Race Calendar ---
+    st.markdown("**Race Calendar**")
+    _race_events = st.session_state["race_events"]
+    _race_to_delete = None
+
+    for _i, _ev in enumerate(_race_events):
+        _c_name, _c_del = st.columns([5, 1])
+        with _c_name:
+            _ev["name"] = st.text_input(
+                f"Race {_i + 1}", value=_ev.get("name", ""),
+                key=f"race_{_i}_name",
+            )
+        with _c_del:
+            st.markdown(
+                "<div style='height:28px'></div>", unsafe_allow_html=True,
+            )
+            if st.button("\u2715", key=f"race_{_i}_del"):
+                _race_to_delete = _i
+
+        _c_date, _c_dist, _c_pri = st.columns(3)
+        with _c_date:
+            _rd = _ev.get("date")
+            if not isinstance(_rd, date):
+                _rd = date.today()
+            _ev["date"] = st.date_input(
+                "Date", value=_rd, key=f"race_{_i}_date",
+            )
+        with _c_dist:
+            _ev["distance_km"] = st.number_input(
+                "km", value=float(_ev.get("distance_km", 42.195)),
+                min_value=0.1, step=0.1, key=f"race_{_i}_dist",
+            )
+        with _c_pri:
+            _pri_options = ["A (Goal)", "B (Support)", "C (Tune-up)"]
+            _pri_idx = {"A": 0, "B": 1, "C": 2}.get(
+                _ev.get("priority", "A"), 0,
+            )
+            _sel = st.selectbox(
+                "Priority", _pri_options, index=_pri_idx,
+                key=f"race_{_i}_pri",
+            )
+            _ev["priority"] = _sel[0]  # "A (Goal)" -> "A"
+
+        if _i < len(_race_events) - 1:
+            st.divider()
+
+    if _race_to_delete is not None:
+        _race_events.pop(_race_to_delete)
+        # Nuke dynamic race widget keys so shifted indices don't read stale state
+        for _k in list(st.session_state.keys()):
+            if _k.startswith("race_") and _k.split("_")[1].isdigit():
+                st.session_state.pop(_k)
+        st.rerun()
+
+    if st.button("+ Add Race"):
+        _race_events.append({
+            "name": "", "date": date.today(),
+            "distance_km": 42.195, "priority": "A",
+        })
+        st.rerun()
 
 # --- Training History ---
 with st.sidebar.expander("Training History", expanded=True):
@@ -305,6 +382,9 @@ with st.sidebar.expander("Advanced (optional)"):
     temperature = st.number_input(
         "Temperature C (0 = unknown)", 0.0, 50.0, step=0.5, key="w_temp",
     )
+    humidity = st.number_input(
+        "Humidity % (0 = unknown)", 0.0, 100.0, step=1.0, key="w_humidity",
+    )
 
 
 def _collect_profile_from_sidebar() -> dict:
@@ -329,7 +409,7 @@ def _collect_profile_from_sidebar() -> dict:
         "total_plan_weeks": total_plan_weeks,
         "current_week": current_week,
         "day_of_week": day_of_week,
-        "goal_race_date": goal_race_date,
+        "race_events": st.session_state.get("race_events", []),
         "avg_weekly_km": avg_weekly_km,
         "hrv_rmssd": hrv_rmssd,
         "hrv_baseline": hrv_baseline,
@@ -338,6 +418,7 @@ def _collect_profile_from_sidebar() -> dict:
         "critical_speed": critical_speed,
         "d_prime": d_prime,
         "temperature": temperature,
+        "humidity_pct": humidity,
     }
     # Override with Garmin-sourced values (handles widget state lag)
     garmin_fields = st.session_state.get("garmin_profile_fields", set())

@@ -17,11 +17,13 @@ from science_engine.math.periodization import allocate_phases, get_phase_for_wee
 from science_engine.math.training_load import calculate_trimp
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import (
+    RacePriority,
     ReadinessLevel,
     SessionType,
     StepType,
     TrainingPhase,
 )
+from science_engine.models.race_calendar import RaceCalendar, RaceEntry
 
 # ---------------------------------------------------------------------------
 # Formatting helpers
@@ -221,12 +223,33 @@ def build_athlete_state(profile: dict) -> AthleteState:
         v = profile.get(key, 0)
         return int(v) if v else None
 
-    # Goal race date
-    goal_date = profile.get("goal_race_date")
-    if isinstance(goal_date, str) and goal_date:
-        goal_date = date.fromisoformat(goal_date)
-    elif not isinstance(goal_date, date):
-        goal_date = None
+    # Race calendar
+    race_events = profile.get("race_events", [])
+    race_calendar = None
+    goal_date = None
+    if race_events:
+        entries = []
+        for ev in race_events:
+            rd = ev["date"]
+            if isinstance(rd, str):
+                rd = date.fromisoformat(rd)
+            entries.append(RaceEntry(
+                race_date=rd,
+                distance_km=ev["distance_km"],
+                race_name=ev.get("name", "Race"),
+                priority=RacePriority[ev["priority"]],
+            ))
+        race_calendar = RaceCalendar.from_entries(*entries)
+        a_race = race_calendar.a_race()
+        goal_date = a_race.race_date if a_race else None
+
+    # Backward compat: fall back to old goal_race_date field
+    if goal_date is None:
+        _legacy = profile.get("goal_race_date")
+        if isinstance(_legacy, str) and _legacy:
+            goal_date = date.fromisoformat(_legacy)
+        elif isinstance(_legacy, date):
+            goal_date = _legacy
 
     # Critical speed
     cs = opt("critical_speed")
@@ -247,6 +270,8 @@ def build_athlete_state(profile: dict) -> AthleteState:
         total_plan_weeks=total_weeks,
         day_of_week=profile.get("day_of_week", date.today().isoweekday()),
         goal_race_date=goal_date,
+        race_calendar=race_calendar,
+        current_date=date.today(),
         weekly_volume_history=weekly_vol,
         daily_loads=daily_loads,
         hrv_rmssd=opt("hrv_rmssd"),
@@ -256,6 +281,7 @@ def build_athlete_state(profile: dict) -> AthleteState:
         critical_speed_m_per_s=cs,
         d_prime_meters=dp,
         temperature_celsius=opt("temperature"),
+        humidity_pct=opt("humidity_pct"),
     )
 
 
@@ -314,6 +340,14 @@ def save_profile(name: str, profile: dict) -> Path:
     for k, v in profile.items():
         if isinstance(v, date):
             serializable[k] = v.isoformat()
+        elif k == "race_events" and isinstance(v, list):
+            serializable[k] = [
+                {
+                    ek: ev_val.isoformat() if isinstance(ev_val, date) else ev_val
+                    for ek, ev_val in ev.items()
+                }
+                for ev in v
+            ]
         else:
             serializable[k] = v
     with open(path, "w") as f:
@@ -325,7 +359,12 @@ def load_profile(name: str) -> dict:
     """Load a profile dict from JSON."""
     path = _PROFILES_DIR / f"{name}.json"
     with open(path) as f:
-        return json.load(f)
+        data = json.load(f)
+    # Convert race event date strings back to date objects
+    for ev in data.get("race_events", []):
+        if isinstance(ev.get("date"), str):
+            ev["date"] = date.fromisoformat(ev["date"])
+    return data
 
 
 def list_profiles() -> list[str]:

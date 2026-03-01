@@ -72,3 +72,4 @@ class AthleteState:
 
     # Environmental
     temperature_celsius: float | None = None
+    humidity_pct: float | None = None  # Relative humidity 0-100

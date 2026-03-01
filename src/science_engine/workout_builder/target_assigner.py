@@ -17,6 +17,7 @@ from science_engine.math.critical_speed import (
     calculate_cs_zones,
     marathon_pace_from_cs,
 )
+from science_engine.math.weather import pace_adjustment_factor
 from science_engine.math.zones import calculate_hr_zones, calculate_pace_zones
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import (
@@ -117,6 +118,15 @@ def assign_targets(
         else:
             pace_low = None
             pace_high = None
+
+    # --- Heat adjustment (pace only) ---
+    heat_factor = pace_adjustment_factor(
+        state.temperature_celsius, state.humidity_pct, state.vo2max,
+    )
+    if pace_low is not None:
+        pace_low = round(pace_low * heat_factor, 1)
+    if pace_high is not None:
+        pace_high = round(pace_high * heat_factor, 1)
 
     # --- HR targets ---
     hr_zones = calculate_hr_zones(state.lthr_bpm, state.max_hr)

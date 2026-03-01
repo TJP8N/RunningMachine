@@ -159,7 +159,19 @@ MAX_SPECIFIC_WEEKS = 8  # Diminishing returns beyond 8 weeks
 RACE_WEEK_THRESHOLD = 12
 
 # Pace degradation per degree C above 15°C — Ely et al. (2007), Med Sci Sports Exerc
-PACE_DEGRADATION_PER_DEGREE_C = 0.003  # 0.3% per degree above 15°C
+PACE_DEGRADATION_PER_DEGREE_C = 0.003  # 0.3% per degree above 15°C (midpack)
+# Ability-dependent Ely et al. (2007) — elite slowdown rate
+PACE_DEGRADATION_ELITE_PER_DEGREE_C = 0.0018   # 0.18% per °C
+# Back-of-pack slowdown rate
+PACE_DEGRADATION_BACK_PER_DEGREE_C = 0.0064     # 0.64% per °C
+# Reference temperature (Ely optimal)
+HEAT_REFERENCE_TEMP_C = 15.0
+# VO2max thresholds for tier classification
+HEAT_VO2MAX_ELITE = 65.0
+HEAT_VO2MAX_MIDPACK = 50.0
+# Humidity correction — Running Writings model
+HUMIDITY_CORRECTION_PER_PCT = 0.002   # 0.2% per % above 60%
+HUMIDITY_CORRECTION_THRESHOLD = 60.0
 
 # TRIMP gender coefficients — Banister (1991)
 TRIMP_COEFFICIENT_MALE = 1.92

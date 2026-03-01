@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.decision_trace import DecisionTrace, RuleStatus
+from science_engine.math.weather import heat_risk_category, pace_adjustment_factor
 from science_engine.models.enums import (
     ACWR_CAUTION_HIGH,
     ACWR_DANGER_THRESHOLD,
     ACWR_OPTIMAL_HIGH,
     ACWR_OPTIMAL_LOW,
+    HEAT_REFERENCE_TEMP_C,
     SessionType,
     TrainingPhase,
 )
@@ -94,6 +96,20 @@ def build_workout_description(
         readiness_parts.append(f"Body battery: {state.body_battery}/100")
     if readiness_parts:
         lines.append("Readiness: " + " | ".join(readiness_parts))
+
+    # Heat adjustment notice
+    if state.temperature_celsius is not None and state.temperature_celsius > HEAT_REFERENCE_TEMP_C:
+        factor = pace_adjustment_factor(
+            state.temperature_celsius, state.humidity_pct, state.vo2max,
+        )
+        pct = (factor - 1.0) * 100
+        risk = heat_risk_category(state.temperature_celsius, state.humidity_pct)
+        parts = [f"{state.temperature_celsius:.0f}\u00b0C"]
+        if state.humidity_pct is not None:
+            parts.append(f"{state.humidity_pct:.0f}% humidity")
+        lines.append(
+            f"Heat adjustment: +{pct:.1f}% pace ({', '.join(parts)}) \u2014 risk: {risk}"
+        )
 
     # Top firing rules
     fired_rules = [
