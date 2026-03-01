@@ -255,6 +255,10 @@ def build_athlete_state(profile: dict) -> AthleteState:
     cs = opt("critical_speed")
     dp = opt("d_prime")
 
+    # VO2max history for ceiling model
+    raw_history = profile.get("vo2max_history", [])
+    vo2max_history = tuple((d, v) for d, v in raw_history) if raw_history else ()
+
     return AthleteState(
         name=profile.get("name", "Runner"),
         age=profile.get("age", 35),
@@ -264,6 +268,7 @@ def build_athlete_state(profile: dict) -> AthleteState:
         lthr_bpm=profile.get("lthr_bpm", 165),
         lthr_pace_s_per_km=lthr_pace_s,
         vo2max=profile.get("vo2max", 45.0),
+        vo2max_history=vo2max_history,
         resting_hr=resting_hr,
         current_phase=current_phase,
         current_week=current_week,

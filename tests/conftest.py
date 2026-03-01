@@ -298,6 +298,39 @@ def athlete_for_structured() -> AthleteState:
 
 
 @pytest.fixture
+def athlete_for_ceiling() -> AthleteState:
+    """Athlete with CS, VO2max, and VO2max history for ceiling estimation."""
+    return AthleteState(
+        name="Ceiling Runner",
+        age=35,
+        weight_kg=62.0,
+        sex="F",
+        max_hr=185,
+        lthr_bpm=168,
+        lthr_pace_s_per_km=305,
+        vo2max=48.0,
+        vo2max_history=(
+            ("2025-10-01", 45.0),
+            ("2025-11-01", 46.0),
+            ("2025-12-01", 47.0),
+            ("2026-01-01", 48.0),
+            ("2026-02-01", 49.0),
+        ),
+        resting_hr=48,
+        current_phase=TrainingPhase.BUILD,
+        current_week=8,
+        total_plan_weeks=16,
+        day_of_week=2,
+        weekly_volume_history=(42.0, 44.0, 46.0, 48.0, 50.0),
+        daily_loads=tuple([55.0] * 28),
+        readiness=ReadinessLevel.NORMAL,
+        goal_race_date=date(2026, 6, 15),
+        critical_speed_m_per_s=4.2,
+        d_prime_meters=200.0,
+    )
+
+
+@pytest.fixture
 def athlete_with_hrv_data() -> AthleteState:
     """Athlete with HRV, sleep, and body battery data populated."""
     return AthleteState(

@@ -301,3 +301,61 @@ FUELING_INTERVAL_MIN = 45             # Gel every ~45 min during long efforts
 # ---------------------------------------------------------------------------
 INTENSITY_B_MODERATE_FACTOR = 0.95   # 5% easier
 INTENSITY_C_EASY_FACTOR = 0.85       # 15% easier
+
+# ---------------------------------------------------------------------------
+# Performance Ceiling Model constants
+# ---------------------------------------------------------------------------
+# Marathon distance in metres
+MARATHON_DISTANCE_M = 42195.0
+
+# CS marathon intensity by fitness tier
+# Sub-elite: Smyth & Muniz-Pumares (2020) top-quartile — ~93% CS
+# Jones (2006) — world-class women's marathon physiology
+# Midpack: Smyth & Muniz-Pumares (2020) — 84.8% CS
+# Novice: empirical — 82% CS
+CEILING_CS_PCT_ELITE = 0.93
+CEILING_CS_PCT_MIDPACK = 0.848
+CEILING_CS_PCT_NOVICE = 0.82
+
+# VO2max thresholds for %CS interpolation tiers
+CEILING_VO2MAX_ELITE = 65.0
+CEILING_VO2MAX_MIDPACK = 50.0
+CEILING_VO2MAX_NOVICE = 35.0
+
+# Convergence weights — CS (primary) vs VO2max (secondary)
+CEILING_WEIGHT_CS = 0.60
+CEILING_WEIGHT_VO2MAX = 0.40
+
+# Default confidence level for CI calculation
+CEILING_CONFIDENCE_LEVEL = 0.85
+# Z-score for 85% CI (no scipy dependency)
+CEILING_Z_SCORE_85 = 1.440
+
+# Base uncertainty as fraction of marathon time per signal (~3%)
+CEILING_BASE_UNCERTAINTY_PCT = 0.03
+
+# Widen CI by this factor when VO2max trajectory data is missing
+CEILING_NO_TRAJECTORY_WIDENING = 1.30
+
+# Daniels-Gilbert oxygen cost equation coefficients
+# VO2 = -4.60 + 0.182258 * v + 0.000104 * v^2  (v in m/min)
+# Reference: Daniels & Gilbert (1979), Oxygen Power
+DANIELS_A = -4.60
+DANIELS_B = 0.182258
+DANIELS_C = 0.000104
+
+# Daniels-Gilbert %VO2max sustained at duration t (minutes)
+# %VO2max = 0.8 + 0.1894393 * e^(-0.012778 * t) + 0.2989558 * e^(-0.1932605 * t)
+DANIELS_PCT_A = 0.8
+DANIELS_PCT_B = 0.1894393
+DANIELS_PCT_C = -0.012778
+DANIELS_PCT_D = 0.2989558
+DANIELS_PCT_E = -0.1932605
+
+# Riegel fatigue exponent — Riegel (1981)
+RIEGEL_EXPONENT = 1.06
+
+# VO2max trajectory constraints — Midgley et al. (2007)
+VO2MAX_MIN_HISTORY_POINTS = 3
+VO2MAX_MAX_WEEKLY_IMPROVEMENT = 0.5  # ml/kg/min per week cap
+VO2MAX_PROJECTION_MAX_WEEKS = 26     # Don't project beyond 6 months

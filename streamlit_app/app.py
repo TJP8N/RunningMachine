@@ -657,8 +657,8 @@ def _ensure_garmin_metrics() -> dict | None:
         return None
 
 
-tab_today, tab_week, tab_trace = st.tabs(
-    ["Today's Workout", "Weekly Plan", "Decision Trace"]
+tab_today, tab_week, tab_trace, tab_ceiling = st.tabs(
+    ["Today's Workout", "Weekly Plan", "Decision Trace", "Performance Ceiling"]
 )
 
 engine = get_engine()
@@ -865,3 +865,120 @@ with tab_trace:
             for i, day_trace in enumerate(plan_for_trace.traces):
                 with st.expander(f"{DAY_NAMES[i]} trace"):
                     _render_trace(day_trace)
+
+# ---------------------------------------------------------------------------
+# Tab 4: Performance Ceiling
+# ---------------------------------------------------------------------------
+
+with tab_ceiling:
+    from science_engine.math.ceiling import (
+        estimate_ceiling as _estimate_ceiling,
+        format_ceiling_range as _format_ceiling_range,
+        format_marathon_time as _format_marathon_time,
+    )
+
+    st.subheader("Marathon Performance Ceiling")
+    st.caption(
+        "Combines Critical Speed extrapolation and VO2max trajectory to project "
+        "your race-day marathon time with confidence intervals."
+    )
+
+    if st.button("Calculate Ceiling", type="primary"):
+        profile = _collect_profile_from_sidebar()
+        try:
+            garmin_m = _ensure_garmin_metrics()
+            if garmin_m:
+                state = build_athlete_state_with_garmin(profile, garmin_m)
+            else:
+                state = build_athlete_state(profile)
+
+            ceil_est = _estimate_ceiling(
+                cs=state.critical_speed_m_per_s,
+                se_cs=0.0,  # SE not available from sidebar input
+                vo2max=state.vo2max if state.vo2max > 0 else None,
+                vo2max_history=state.vo2max_history,
+                race_date=state.goal_race_date,
+                current_date=state.current_date or date.today(),
+            )
+            st.session_state["last_ceiling"] = ceil_est
+        except Exception as e:
+            st.error(f"Error calculating ceiling: {e}")
+
+    ceil = st.session_state.get("last_ceiling")
+    if ceil is not None:
+        # Headline range
+        range_text = _format_ceiling_range(ceil)
+        if ceil.data_quality == "INSUFFICIENT":
+            st.warning(range_text)
+        else:
+            quality_colors = {
+                "HIGH": "#2ECC71",
+                "MODERATE": "#F5B041",
+                "LOW": "#E74C3C",
+            }
+            q_color = quality_colors.get(ceil.data_quality, "#CCCCCC")
+            st.markdown(
+                f'<div style="background:{q_color};padding:14px 20px;'
+                f'border-radius:8px;font-size:1.3em;font-weight:bold;'
+                f'text-align:center;margin-bottom:16px;">'
+                f'{range_text}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Metrics row
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric(
+                "Central Estimate",
+                _format_marathon_time(ceil.marathon_time_s),
+            )
+            mc2.metric(
+                "Marathon Pace",
+                f"{int(ceil.marathon_pace_s_per_km) // 60}:"
+                f"{int(ceil.marathon_pace_s_per_km) % 60:02d}/km",
+            )
+            mc3.metric("Data Quality", ceil.data_quality)
+            mc4.metric("Signals", str(ceil.signal_count))
+
+            # Signal details
+            st.subheader("Signal Details")
+            sig1, sig2 = st.columns(2)
+            with sig1:
+                st.markdown("**Critical Speed Signal**")
+                if ceil.cs_estimate_s is not None:
+                    st.caption(
+                        f"CS estimate: {_format_marathon_time(ceil.cs_estimate_s)}"
+                    )
+                    st.caption(f"%CS used: {ceil.pct_cs_used:.1%}")
+                else:
+                    st.caption("Not available (enter CS in Advanced section)")
+            with sig2:
+                st.markdown("**VO2max Signal**")
+                if ceil.vo2max_estimate_s is not None:
+                    st.caption(
+                        f"VO2max estimate: "
+                        f"{_format_marathon_time(ceil.vo2max_estimate_s)}"
+                    )
+                    if ceil.vo2max_projected is not None:
+                        st.caption(
+                            f"Projected VO2max at race: "
+                            f"{ceil.vo2max_projected:.1f} ml/kg/min"
+                        )
+                    if ceil.vo2max_weekly_trend is not None:
+                        sign = "+" if ceil.vo2max_weekly_trend > 0 else ""
+                        st.caption(
+                            f"Weekly trend: {sign}"
+                            f"{ceil.vo2max_weekly_trend:.2f} ml/kg/min/wk"
+                        )
+                else:
+                    st.caption("Not available (enter VO2max in Physiology section)")
+
+            # Warnings
+            if ceil.warnings:
+                st.subheader("Warnings")
+                for w in ceil.warnings:
+                    st.warning(w)
+    else:
+        st.info(
+            "Click **Calculate Ceiling** to estimate your marathon "
+            "performance ceiling. Enter CS and/or VO2max in the sidebar."
+        )

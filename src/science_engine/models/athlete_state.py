@@ -34,6 +34,7 @@ class AthleteState:
     lthr_bpm: int
     lthr_pace_s_per_km: int  # Lactate threshold pace in seconds per km
     vo2max: float
+    vo2max_history: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     resting_hr: int = 50
 
     # Plan context
