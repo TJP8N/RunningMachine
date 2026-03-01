@@ -31,8 +31,6 @@ from __future__ import annotations
 from science_engine.math.training_load import calculate_acwr, classify_acwr
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import (
-    ACWR_OPTIMAL_HIGH,
-    ACWR_OPTIMAL_LOW,
     ARR_CONFIDENCE,
     ARR_CONVERGED_INTENSITY_MOD,
     ARR_CONVERGED_VOLUME_MOD,
@@ -101,6 +99,8 @@ class AsymmetricReadinessRule(ScienceRule):
         veto = 0
 
         # Signal 1: HRV
+        if state.hrv_baseline <= 0:  # type: ignore[operator]
+            return suppressed, veto
         hrv_ratio = state.hrv_rmssd / state.hrv_baseline  # type: ignore[operator]
         if hrv_ratio < HRV_SUPPRESS_THRESHOLD:
             suppressed += 1
@@ -158,6 +158,8 @@ class AsymmetricReadinessRule(ScienceRule):
     # ------------------------------------------------------------------
 
     def evaluate(self, state: AthleteState) -> RuleRecommendation | None:
+        if state.hrv_baseline <= 0:  # type: ignore[operator]
+            return None
         hrv_ratio = state.hrv_rmssd / state.hrv_baseline  # type: ignore[operator]
 
         suppressed, veto = self._count_signals(state)

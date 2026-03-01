@@ -116,11 +116,19 @@ class HighestPriorityWins(ResolutionStrategy):
                         confidence=winner.confidence,
                     )
 
-        # Apply intensity/volume modifiers from higher-priority non-veto rules
+        # Apply intensity/volume modifiers from:
+        # 1. Higher-priority rules (their modifiers always cascade down)
+        # 2. RECOVERY-tier vetoes (safety-critical even against DRIVE winners)
         intensity_mod = winner.intensity_modifier
         volume_mod = winner.volume_modifier
         for rec in recommendations:
             if rec.priority < winner.priority:
+                intensity_mod = min(intensity_mod, rec.intensity_modifier)
+                volume_mod = min(volume_mod, rec.volume_modifier)
+            elif rec.priority > winner.priority and rec.veto:
+                # A lower-tier veto (e.g. RECOVERY veto vs DRIVE winner)
+                # should still cascade its modifiers — the athlete may be
+                # ill or severely fatigued.
                 intensity_mod = min(intensity_mod, rec.intensity_modifier)
                 volume_mod = min(volume_mod, rec.volume_modifier)
 

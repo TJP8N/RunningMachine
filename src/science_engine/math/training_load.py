@@ -133,9 +133,7 @@ def classify_acwr(acwr: float) -> str:
         return "caution"
     if acwr >= ACWR_OPTIMAL_LOW:
         return "optimal"
-    if acwr < ACWR_UNDERTRAINED:
-        return "undertrained"
-    return "optimal"
+    return "undertrained"
 
 
 def calculate_monotony(daily_loads: list[float] | tuple[float, ...]) -> float:

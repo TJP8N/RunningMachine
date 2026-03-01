@@ -38,6 +38,8 @@ class HRVReadinessRule(ScienceRule):
 
     def evaluate(self, state: AthleteState) -> RuleRecommendation | None:
         # required_data check guarantees these are not None
+        if state.hrv_baseline <= 0:  # type: ignore[operator]
+            return None
         hrv_ratio = state.hrv_rmssd / state.hrv_baseline  # type: ignore[operator]
 
         if hrv_ratio < HRV_VETO_THRESHOLD:

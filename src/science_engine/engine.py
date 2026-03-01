@@ -242,9 +242,9 @@ class ScienceEngine:
         base_duration = rec.target_duration_min or _DEFAULT_DURATION.get(session_type, 45.0)
         adjusted_duration = base_duration * rec.volume_modifier
 
-        # If there's a safety veto, override to easy/recovery
+        # If there's a veto, honour the rule's recommended session type
         if rec.veto:
-            session_type = SessionType.EASY
+            session_type = rec.recommended_session_type or SessionType.EASY
             adjusted_duration = min(adjusted_duration, 45.0)
 
         # Map intensity modifier to IntensityLevel

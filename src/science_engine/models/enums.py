@@ -174,10 +174,12 @@ HUMIDITY_CORRECTION_PER_PCT = 0.002   # 0.2% per % above 60%
 HUMIDITY_CORRECTION_THRESHOLD = 60.0
 
 # TRIMP gender coefficients — Banister (1991)
-TRIMP_COEFFICIENT_MALE = 1.92
-TRIMP_COEFFICIENT_FEMALE = 1.67
-TRIMP_EXPONENT_MALE = 0.64
-TRIMP_EXPONENT_FEMALE = 1.92
+# Formula: TRIMP = duration × ΔHR × coefficient × exp(exponent × ΔHR)
+# Coefficient is 0.64 for both sexes; exponent varies (1.92 M, 1.67 F)
+TRIMP_COEFFICIENT_MALE = 0.64
+TRIMP_COEFFICIENT_FEMALE = 0.64
+TRIMP_EXPONENT_MALE = 1.92
+TRIMP_EXPONENT_FEMALE = 1.67
 
 # ---------------------------------------------------------------------------
 # Critical Speed constants
@@ -225,19 +227,6 @@ MP_VOLUME_TARGETS_MIN = {
 # Threshold for MP deficit that triggers a DRIVE recommendation (minutes)
 MP_DEFICIT_THRESHOLD_MIN = 15.0
 
-# Session intensity zones mapped to %LTHR for TRIMP-like calculations
-SESSION_INTENSITY_LTHR_PCT = {
-    SessionType.REST: 0.0,
-    SessionType.RECOVERY: 0.70,
-    SessionType.EASY: 0.78,
-    SessionType.LONG_RUN: 0.82,
-    SessionType.TEMPO: 0.88,
-    SessionType.THRESHOLD: 0.95,
-    SessionType.VO2MAX_INTERVALS: 1.05,
-    SessionType.MARATHON_PACE: 0.88,
-    SessionType.RACE_SIMULATION: 0.92,
-}
-
 # ---------------------------------------------------------------------------
 # HRV readiness constants — Plews et al. (2013), Buchheit (2014)
 # ---------------------------------------------------------------------------
@@ -274,13 +263,9 @@ BODY_BATTERY_MILD_VOLUME_MOD = 0.95
 # ---------------------------------------------------------------------------
 # Race calendar constants — Mujika (2010)
 # ---------------------------------------------------------------------------
-B_RACE_TAPER_DAYS = 7
 B_RACE_RECOVERY_DAYS = 3
-C_RACE_EASY_DAY_BEFORE = 1
 B_RACE_TAPER_VOLUME_MOD = 0.70
 B_RACE_TAPER_INTENSITY_MOD = 0.85
-RACE_PROXIMITY_DAY_BEFORE = 1
-RACE_PROXIMITY_B_RACE_WINDOW = 7
 
 # ---------------------------------------------------------------------------
 # Workout structure — warmup/cooldown defaults (minutes)
@@ -351,9 +336,6 @@ DANIELS_PCT_B = 0.1894393
 DANIELS_PCT_C = -0.012778
 DANIELS_PCT_D = 0.2989558
 DANIELS_PCT_E = -0.1932605
-
-# Riegel fatigue exponent — Riegel (1981)
-RIEGEL_EXPONENT = 1.06
 
 # VO2max trajectory constraints — Midgley et al. (2007)
 VO2MAX_MIN_HISTORY_POINTS = 3
