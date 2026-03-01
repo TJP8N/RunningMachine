@@ -114,9 +114,15 @@ class TestClassifyACWR:
 
 
 class TestMonotony:
-    def test_constant_loads_zero_monotony(self) -> None:
-        # Constant loads → std = 0 → monotony = 0 (guarded)
+    def test_constant_loads_infinite_monotony(self) -> None:
+        # Constant non-zero loads → std = 0 → maximum monotony (inf)
+        # Per Foster (1998): identical daily loads = highest monotony
         monotony = calculate_monotony([50.0] * 7)
+        assert monotony == float("inf")
+
+    def test_all_zero_loads_zero_monotony(self) -> None:
+        # All zero loads → no training, no monotony
+        monotony = calculate_monotony([0.0] * 7)
         assert monotony == 0.0
 
     def test_varied_loads_nonzero(self) -> None:

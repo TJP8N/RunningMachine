@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from science_engine.conflict_resolution.resolver import ConflictResolver
 from science_engine.conflict_resolution.strategies import HighestPriorityWins
+from science_engine.math.ceiling import estimate_ceiling
 from science_engine.math.training_load import calculate_trimp
+from science_engine.math.weather import is_heat_unsafe, pace_adjustment_factor
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import (
+    HEAT_EXTREME_TEMP_C,
     TRIMP_COEFFICIENT_MALE,
     TRIMP_COEFFICIENT_FEMALE,
     TRIMP_EXPONENT_MALE,
@@ -213,3 +218,50 @@ class TestRecoveryVetoCascade:
         # Non-veto RECOVERY should NOT affect DRIVE
         assert winner.intensity_modifier == 1.0
         assert winner.volume_modifier == 1.0
+
+
+# ------------------------------------------------------------------
+# 4. Z-score fallback rejects unsupported confidence levels
+# ------------------------------------------------------------------
+
+
+class TestZScoreFallback:
+    def test_supported_confidence_levels_work(self) -> None:
+        """All tabulated confidence levels should produce valid estimates."""
+        for cl in (0.80, 0.85, 0.90, 0.95, 0.99):
+            result = estimate_ceiling(vo2max=50.0, confidence_level=cl)
+            assert result.confidence_level == cl
+
+    def test_unsupported_confidence_level_raises(self) -> None:
+        """Non-tabulated confidence level should raise ValueError."""
+        with pytest.raises(ValueError, match="Unsupported confidence_level"):
+            estimate_ceiling(vo2max=50.0, confidence_level=0.92)
+
+
+# ------------------------------------------------------------------
+# 5. Extreme heat safety cap
+# ------------------------------------------------------------------
+
+
+class TestHeatSafetyCap:
+    def test_is_heat_unsafe_at_extreme(self) -> None:
+        """>=40C should be flagged as unsafe."""
+        assert is_heat_unsafe(40.0) is True
+        assert is_heat_unsafe(42.0) is True
+
+    def test_is_heat_unsafe_high_temp_high_humidity(self) -> None:
+        """35C + >70% humidity should be flagged as unsafe."""
+        assert is_heat_unsafe(35.0, humidity_pct=75.0) is True
+
+    def test_is_heat_safe_below_threshold(self) -> None:
+        """Normal temperatures should not be flagged."""
+        assert is_heat_unsafe(25.0) is False
+        assert is_heat_unsafe(None) is False
+
+    def test_is_heat_safe_35c_low_humidity(self) -> None:
+        """35C with low humidity is hot but not unsafe."""
+        assert is_heat_unsafe(35.0, humidity_pct=50.0) is False
+
+    def test_extreme_temp_constant_value(self) -> None:
+        """HEAT_EXTREME_TEMP_C should be 40.0."""
+        assert HEAT_EXTREME_TEMP_C == 40.0

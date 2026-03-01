@@ -437,7 +437,12 @@ def estimate_ceiling(
         0.95: 1.960,
         0.99: 2.576,
     }
-    z = _Z_SCORES.get(confidence_level, CEILING_Z_SCORE_85)
+    if confidence_level not in _Z_SCORES:
+        raise ValueError(
+            f"Unsupported confidence_level={confidence_level}. "
+            f"Supported: {sorted(_Z_SCORES.keys())}"
+        )
+    z = _Z_SCORES[confidence_level]
     half_width = z * uncertainty
 
     marathon_time_low_s = central - half_width

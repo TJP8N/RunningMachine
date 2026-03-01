@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.decision_trace import DecisionTrace, RuleStatus
-from science_engine.math.weather import heat_risk_category, pace_adjustment_factor
+from science_engine.math.weather import (
+    heat_risk_category,
+    is_heat_unsafe,
+    pace_adjustment_factor,
+)
 from science_engine.models.enums import (
     ACWR_CAUTION_HIGH,
     ACWR_DANGER_THRESHOLD,
@@ -110,6 +114,11 @@ def build_workout_description(
         lines.append(
             f"Heat adjustment: +{pct:.1f}% pace ({', '.join(parts)}) \u2014 risk: {risk}"
         )
+        if is_heat_unsafe(state.temperature_celsius, state.humidity_pct):
+            lines.append(
+                "WARNING: Extreme heat — outdoor running not recommended. "
+                "Consider indoor alternatives or reschedule."
+            )
 
     # Top firing rules
     fired_rules = [

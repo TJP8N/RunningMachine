@@ -12,6 +12,7 @@ References:
 from __future__ import annotations
 
 from science_engine.models.enums import (
+    HEAT_EXTREME_TEMP_C,
     HEAT_REFERENCE_TEMP_C,
     HEAT_VO2MAX_ELITE,
     HEAT_VO2MAX_MIDPACK,
@@ -113,3 +114,22 @@ def heat_risk_category(
 
     categories = ("LOW", "MODERATE", "HIGH", "EXTREME")
     return categories[base]
+
+
+def is_heat_unsafe(
+    temperature_c: float | None,
+    humidity_pct: float | None = None,
+) -> bool:
+    """Return True when outdoor running poses serious heat-illness risk.
+
+    At >=40°C (or >=35°C with >70% humidity), outdoor running is not
+    recommended per ACSM position stand on exertional heat illness.
+    """
+    if temperature_c is None:
+        return False
+    if temperature_c >= HEAT_EXTREME_TEMP_C:
+        return True
+    # High heat + high humidity is equally dangerous
+    if temperature_c >= 35.0 and humidity_pct is not None and humidity_pct > 70.0:
+        return True
+    return False

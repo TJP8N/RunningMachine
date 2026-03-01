@@ -172,6 +172,8 @@ HEAT_VO2MAX_MIDPACK = 50.0
 # Humidity correction — Running Writings model
 HUMIDITY_CORRECTION_PER_PCT = 0.002   # 0.2% per % above 60%
 HUMIDITY_CORRECTION_THRESHOLD = 60.0
+# Safety cap — ACSM position stand on exertional heat illness
+HEAT_EXTREME_TEMP_C = 40.0           # ≥40°C: outdoor running not recommended
 
 # TRIMP gender coefficients — Banister (1991)
 # Formula: TRIMP = duration × ΔHR × coefficient × exp(exponent × ΔHR)

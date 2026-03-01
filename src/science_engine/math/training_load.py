@@ -155,10 +155,12 @@ def calculate_monotony(daily_loads: list[float] | tuple[float, ...]) -> float:
     if len(daily_loads) < 7:
         return 0.0
     recent = np.array(daily_loads[-7:], dtype=np.float64)
+    mean = float(np.mean(recent))
     std = float(np.std(recent, ddof=0))
     if std < 1e-6:
-        return 0.0
-    return float(np.mean(recent)) / std
+        # All loads identical → maximum monotony (or all zero → no training)
+        return float("inf") if mean > 0 else 0.0
+    return mean / std
 
 
 def project_acwr_with_session(
