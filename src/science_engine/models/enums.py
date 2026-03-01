@@ -359,3 +359,14 @@ RIEGEL_EXPONENT = 1.06
 VO2MAX_MIN_HISTORY_POINTS = 3
 VO2MAX_MAX_WEEKLY_IMPROVEMENT = 0.5  # ml/kg/min per week cap
 VO2MAX_PROJECTION_MAX_WEEKS = 26     # Don't project beyond 6 months
+
+# ---------------------------------------------------------------------------
+# Adaptive Stimulus Calibration (ASC) constants
+# ---------------------------------------------------------------------------
+ASC_TREND_STAGNATION_THRESHOLD = 0.10   # ml/kg/min/wk — below this = stagnating
+ASC_TREND_DECLINE_THRESHOLD = -0.05     # below this = declining
+ASC_SIGNAL_GAP_S = 120.0               # seconds gap to identify limiting factor
+ASC_VOLUME_BOOST_WEAK = 1.05           # 5% boost for stagnation
+ASC_VOLUME_BOOST_STRONG = 1.08         # 8% boost for decline
+ASC_ACWR_CEILING = 1.3                 # don't fire above this ACWR
+ASC_CONFIDENCE = 0.65                  # below adaptation_demand's 0.70
