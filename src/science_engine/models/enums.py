@@ -370,3 +370,21 @@ ASC_VOLUME_BOOST_WEAK = 1.05           # 5% boost for stagnation
 ASC_VOLUME_BOOST_STRONG = 1.08         # 8% boost for decline
 ASC_ACWR_CEILING = 1.3                 # don't fire above this ACWR
 ASC_CONFIDENCE = 0.65                  # below adaptation_demand's 0.70
+
+# ---------------------------------------------------------------------------
+# Asymmetric Readiness Response (ARR) constants
+# ---------------------------------------------------------------------------
+# Stanley et al. (2013), Auton Neurosci 178:76-85
+# Plews et al. (2013), Int J Sports Physiol Perform 8(6):688-694
+ARR_CONVERGENCE_REQUIRED = 2           # Independent signals to override key session
+ARR_ELEVATED_HRV_THRESHOLD = 1.10     # HRV/baseline ratio for supercompensation
+ARR_ELEVATED_VOLUME_BOOST = 1.05      # Volume uplift when elevated
+ARR_EXPECTED_INTENSITY_MOD = 0.92     # Expected single-signal: mild dampen
+ARR_EXPECTED_VOLUME_MOD = 0.95
+ARR_MODERATE_INTENSITY_MOD = 0.80     # Unexpected single / expected converged
+ARR_MODERATE_VOLUME_MOD = 0.85
+ARR_CONVERGED_INTENSITY_MOD = 0.65    # Unexpected multi-signal convergence
+ARR_CONVERGED_VOLUME_MOD = 0.70
+ARR_VETO_INTENSITY_MOD = 0.50         # Convergence + veto-level signal → REST
+ARR_VETO_VOLUME_MOD = 0.55
+ARR_CONFIDENCE = 0.95                 # Wins over individual recovery rules (0.7-0.9)

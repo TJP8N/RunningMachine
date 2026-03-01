@@ -7,7 +7,7 @@ from datetime import date
 
 from typing import TYPE_CHECKING
 
-from science_engine.models.enums import ReadinessLevel, TrainingPhase
+from science_engine.models.enums import ReadinessLevel, SessionType, TrainingPhase
 
 if TYPE_CHECKING:
     from science_engine.models.race_calendar import RaceCalendar
@@ -57,6 +57,7 @@ class AthleteState:
     sleep_score: float | None = None
     readiness: ReadinessLevel = ReadinessLevel.NORMAL
     body_battery: int | None = None
+    previous_day_session_type: SessionType | None = None  # Yesterday's session type
 
     # Critical Speed model data
     distance_time_pairs: tuple[tuple[float, float], ...] = field(default_factory=tuple)
