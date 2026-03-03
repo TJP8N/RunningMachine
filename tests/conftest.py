@@ -9,6 +9,7 @@ import pytest
 
 from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import RacePriority, ReadinessLevel, SessionType, TrainingPhase
+from science_engine.models.mp_session_record import MPSessionRecord
 from science_engine.models.race_calendar import RaceCalendar, RaceEntry
 from science_engine.models.training_debt import DebtEntry, TrainingDebtLedger
 from science_engine.models.weekly_plan import WeekContext
@@ -327,6 +328,59 @@ def athlete_for_ceiling() -> AthleteState:
         goal_race_date=date(2026, 6, 15),
         critical_speed_m_per_s=4.2,
         d_prime_meters=200.0,
+    )
+
+
+@pytest.fixture
+def sample_mp_sessions() -> tuple[MPSessionRecord, ...]:
+    """5 realistic MP sessions spanning 6 weeks with mixed attributes."""
+    return (
+        MPSessionRecord(
+            date="2026-02-28",
+            total_mp_time_min=30.0,
+            longest_continuous_mp_min=30.0,
+            mp_in_second_half_min=0.0,
+            was_long_run=False,
+            weeks_ago=0.5,
+            prescribed_pace_s_per_km=300,
+            actual_pace_s_per_km=302,
+            pace_std_dev_s_per_km=4.5,
+        ),
+        MPSessionRecord(
+            date="2026-02-21",
+            total_mp_time_min=25.0,
+            longest_continuous_mp_min=25.0,
+            mp_in_second_half_min=15.0,
+            was_long_run=True,
+            weeks_ago=1.5,
+            prescribed_pace_s_per_km=300,
+            actual_pace_s_per_km=305,
+            pace_std_dev_s_per_km=6.0,
+        ),
+        MPSessionRecord(
+            date="2026-02-14",
+            total_mp_time_min=20.0,
+            longest_continuous_mp_min=20.0,
+            mp_in_second_half_min=10.0,
+            was_long_run=True,
+            weeks_ago=2.5,
+        ),
+        MPSessionRecord(
+            date="2026-02-01",
+            total_mp_time_min=15.0,
+            longest_continuous_mp_min=15.0,
+            mp_in_second_half_min=0.0,
+            was_long_run=False,
+            weeks_ago=4.0,
+        ),
+        MPSessionRecord(
+            date="2026-01-18",
+            total_mp_time_min=20.0,
+            longest_continuous_mp_min=20.0,
+            mp_in_second_half_min=12.0,
+            was_long_run=True,
+            weeks_ago=6.0,
+        ),
     )
 
 

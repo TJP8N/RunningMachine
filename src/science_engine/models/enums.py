@@ -372,3 +372,24 @@ ARR_CONVERGED_VOLUME_MOD = 0.70
 ARR_VETO_INTENSITY_MOD = 0.50         # Convergence + veto-level signal → REST
 ARR_VETO_VOLUME_MOD = 0.55
 ARR_CONFIDENCE = 0.95                 # Wins over individual recovery rules (0.7-0.9)
+
+# ---------------------------------------------------------------------------
+# Race-Pace Confidence Scoring (RPCS) constants
+# Pfitzinger & Douglas (2009), Daniels (2014)
+# ---------------------------------------------------------------------------
+RPCS_WEIGHT_CUMULATIVE = 0.30
+RPCS_WEIGHT_LONGEST_SEGMENT = 0.20
+RPCS_WEIGHT_FATIGUE = 0.30
+RPCS_WEIGHT_ACCURACY = 0.20
+RPCS_CUMULATIVE_TARGET_MIN = 120.0
+RPCS_CUMULATIVE_MINIMUM_MIN = 60.0
+RPCS_LONGEST_SEGMENT_TARGET_MIN = 50.0
+RPCS_LONGEST_SEGMENT_FLOOR_MIN = 20.0
+RPCS_FATIGUE_TARGET_MIN = 40.0
+RPCS_FATIGUE_MINIMUM_MIN = 10.0
+RPCS_ACCURACY_EXCELLENT_S = 3.0
+RPCS_ACCURACY_POOR_S = 15.0
+RPCS_RECENCY_HALF_LIFE_WEEKS = 5.0
+RPCS_ACCURACY_DEFAULT_SCORE = 50.0
+RPCS_LOW_CONFIDENCE_THRESHOLD = 65.0
+RPCS_LOW_CONFIDENCE_BOOST = 0.85

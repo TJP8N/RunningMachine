@@ -23,6 +23,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Sequence
+
+    from science_engine.models.mp_session_record import MPSessionRecord
 
 from science_engine.models.enums import (
     CEILING_BASE_UNCERTAINTY_PCT,
@@ -85,6 +91,7 @@ class CeilingEstimate:
     data_quality: str = "INSUFFICIENT"
     warnings: tuple[str, ...] = field(default_factory=tuple)
     signal_count: int = 0
+    race_pace_confidence: object | None = None  # RacePaceConfidence when available
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +323,7 @@ def estimate_ceiling(
     race_date: date | None = None,
     current_date: date | None = None,
     confidence_level: float = CEILING_CONFIDENCE_LEVEL,
+    mp_sessions: Sequence[MPSessionRecord] | None = None,
 ) -> CeilingEstimate:
     """Estimate performance ceiling by combining CS and VO2max signals.
 
@@ -334,6 +342,7 @@ def estimate_ceiling(
         race_date: Target race date (None if unknown).
         current_date: Today's date (None → date.today()).
         confidence_level: Desired confidence level (default 0.85).
+        mp_sessions: MP session history for race-pace confidence scoring.
 
     Returns:
         CeilingEstimate with marathon time, CI, quality, and diagnostics.
@@ -451,6 +460,15 @@ def estimate_ceiling(
     # Pace
     marathon_pace = central / (MARATHON_DISTANCE_M / 1000.0)
 
+    # Race-pace confidence scoring (optional)
+    rpcs = None
+    if mp_sessions is not None and len(mp_sessions) > 0:
+        from science_engine.math.race_pace_confidence import (
+            calculate_race_pace_confidence,
+        )
+
+        rpcs = calculate_race_pace_confidence(mp_sessions)
+
     return CeilingEstimate(
         marathon_time_s=central,
         marathon_time_low_s=marathon_time_low_s,
@@ -465,6 +483,7 @@ def estimate_ceiling(
         data_quality=data_quality,
         warnings=tuple(warnings),
         signal_count=signal_count,
+        race_pace_confidence=rpcs,
     )
 
 

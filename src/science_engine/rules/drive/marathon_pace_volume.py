@@ -17,6 +17,8 @@ from science_engine.models.athlete_state import AthleteState
 from science_engine.models.enums import (
     MP_DEFICIT_THRESHOLD_MIN,
     MP_VOLUME_TARGETS_MIN,
+    RPCS_LOW_CONFIDENCE_BOOST,
+    RPCS_LOW_CONFIDENCE_THRESHOLD,
     Priority,
     SessionType,
     TrainingPhase,
@@ -74,6 +76,23 @@ class MarathonPaceVolumeRule(ScienceRule):
         if deficit < MP_DEFICIT_THRESHOLD_MIN:
             return None
 
+        confidence = 0.75
+        rpcs_note = ""
+
+        # Boost confidence when race-pace confidence scoring is low
+        if state.mp_session_history:
+            from science_engine.math.race_pace_confidence import (
+                calculate_race_pace_confidence,
+            )
+
+            rpcs = calculate_race_pace_confidence(state.mp_session_history)
+            if rpcs.composite_score < RPCS_LOW_CONFIDENCE_THRESHOLD:
+                confidence = RPCS_LOW_CONFIDENCE_BOOST
+                rpcs_note = (
+                    f" RPCS={rpcs.composite_score:.0f}/100 "
+                    f"(below {RPCS_LOW_CONFIDENCE_THRESHOLD:.0f} threshold — boosted priority)."
+                )
+
         return RuleRecommendation(
             rule_id=self.rule_id,
             rule_version=self.version,
@@ -84,9 +103,9 @@ class MarathonPaceVolumeRule(ScienceRule):
                 f"(cumulative {state.cumulative_mp_time_min:.0f}/{prorated_target:.0f} min "
                 f"target for {state.current_phase.name}). "
                 f"Recommending MARATHON_PACE session. "
-                f"Ref: Pfitzinger & Douglas (2009)."
+                f"Ref: Pfitzinger & Douglas (2009).{rpcs_note}"
             ),
-            confidence=0.75,
+            confidence=confidence,
         )
 
     @staticmethod

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from science_engine.models.enums import ReadinessLevel, SessionType, TrainingPhase
 
 if TYPE_CHECKING:
+    from science_engine.models.mp_session_record import MPSessionRecord
     from science_engine.models.race_calendar import RaceCalendar
     from science_engine.models.training_debt import TrainingDebtLedger
 
@@ -67,6 +68,7 @@ class AthleteState:
     # DRIVE: training debt and marathon pace tracking
     training_debt: TrainingDebtLedger | None = None
     cumulative_mp_time_min: float = 0.0
+    mp_session_history: tuple[MPSessionRecord, ...] = field(default_factory=tuple)
 
     # Race calendar (multi-race support)
     race_calendar: RaceCalendar | None = None

@@ -972,6 +972,31 @@ with tab_ceiling:
                 else:
                     st.caption("Not available (enter VO2max in Physiology section)")
 
+            # Race-Pace Confidence
+            rpcs = getattr(ceil, "race_pace_confidence", None)
+            if rpcs is not None:
+                st.subheader("Race-Pace Confidence")
+                rc1, rc2, rc3, rc4 = st.columns(4)
+                rc1.metric("Cumulative MP", f"{rpcs.cumulative_mp_score:.0f}/100")
+                rc2.metric("Longest Segment", f"{rpcs.longest_segment_score:.0f}/100")
+                rc3.metric("MP Under Fatigue", f"{rpcs.mp_under_fatigue_score:.0f}/100")
+                rc4.metric("Pace Accuracy", f"{rpcs.pace_accuracy_score:.0f}/100")
+
+                # Composite headline
+                comp_color = "#2ECC71" if rpcs.composite_score >= 65 else "#E74C3C"
+                st.markdown(
+                    f'<div style="background:{comp_color};padding:10px 16px;'
+                    f'border-radius:6px;text-align:center;font-size:1.1em;'
+                    f'font-weight:bold;margin:8px 0;">'
+                    f'Composite: {rpcs.composite_score:.0f}/100 '
+                    f'({rpcs.sessions_counted} sessions)</div>',
+                    unsafe_allow_html=True,
+                )
+
+                if rpcs.warnings:
+                    for rw in rpcs.warnings:
+                        st.warning(rw)
+
             # Warnings
             if ceil.warnings:
                 st.subheader("Warnings")
