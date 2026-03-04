@@ -188,7 +188,3 @@ Every constant and threshold in the codebase cites its source. Key references:
 - Bosquet et al. (2007). Effects of tapering on performance: a meta-analysis. *Med Sci Sports Exerc* 39(8):1358-1365
 - Damsted et al. (2019). Is there evidence for an association between changes in training load and running-related injuries? *J Orthop Sports Phys Ther*
 - Foster (1998). Monitoring training in athletes with reference to overtraining syndrome. *Med Sci Sports Exerc* 30(7):1164-1168
-
-## License
-
-MIT
